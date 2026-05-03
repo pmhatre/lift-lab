@@ -89,9 +89,18 @@ export default function NewSessionPage() {
   const addSet = (exIdx: number) => {
     setExercises((prev) => {
       const next = [...prev];
+      const sets = next[exIdx].sets;
+      const last = sets[sets.length - 1];
       next[exIdx] = {
         ...next[exIdx],
-        sets: [...next[exIdx].sets, { reps: "", weight_lbs: "", is_warmup: false }],
+        sets: [
+          ...sets,
+          {
+            reps: last?.reps ?? "",
+            weight_lbs: last?.weight_lbs ?? "",
+            is_warmup: false,
+          },
+        ],
       };
       return next;
     });
@@ -152,14 +161,14 @@ export default function NewSessionPage() {
   const hasContent = exercises.length > 0;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6 pb-24 sm:pb-0">
       <PageHeader
         title="Log Session"
         actions={
           <Button
             onClick={saveAndFinish}
             disabled={saving || !hasContent}
-            className="bg-[color:var(--color-success)] hover:bg-[color:var(--color-success)]/85"
+            className="hidden bg-[color:var(--color-success)] hover:bg-[color:var(--color-success)]/85 sm:inline-flex"
           >
             {saving ? "Saving..." : "Finish Session"}
           </Button>
@@ -274,6 +283,20 @@ export default function NewSessionPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Mobile sticky finish bar */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:hidden"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
+        <Button
+          onClick={saveAndFinish}
+          disabled={saving || !hasContent}
+          className="h-11 w-full bg-[color:var(--color-success)] text-base hover:bg-[color:var(--color-success)]/85"
+        >
+          {saving ? "Saving..." : "Finish Session"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -329,9 +352,9 @@ function ExerciseCard({
           )}
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-lg"
             onClick={onRemoveExercise}
-            className="text-muted-foreground hover:text-destructive"
+            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -372,72 +395,147 @@ function ExerciseCard({
         </div>
       )}
 
-      <CardContent className="p-4">
-        <div className="mb-2 grid grid-cols-12 gap-2 px-1 text-xs uppercase tracking-wide text-muted-foreground">
-          <div className="col-span-1">#</div>
-          <div className="col-span-4">Weight</div>
-          <div className="col-span-4">Reps</div>
-          <div className="col-span-2 text-center">Warmup</div>
-          <div className="col-span-1"></div>
+      <CardContent className="p-3 sm:p-4">
+        <div className="space-y-2">
+          {ex.sets.map((set, setIdx) => (
+            <SetRow
+              key={setIdx}
+              setIdx={setIdx}
+              set={set}
+              onUpdate={(field, value) => onUpdateSet(exIdx, setIdx, field, value)}
+              onRemove={() => onRemoveSet(exIdx, setIdx)}
+            />
+          ))}
         </div>
-        {ex.sets.map((set, setIdx) => (
-          <div key={setIdx} className="mb-2 grid grid-cols-12 items-center gap-2">
-            <div className="col-span-1 text-sm text-muted-foreground tabular-nums">
-              {setIdx + 1}
-            </div>
-            <div className="col-span-4">
-              <Input
-                type="number"
-                inputMode="decimal"
-                placeholder="lbs"
-                value={set.weight_lbs}
-                onChange={(e) => onUpdateSet(exIdx, setIdx, "weight_lbs", e.target.value)}
-                className="h-9 tabular-nums"
-              />
-            </div>
-            <div className="col-span-4">
-              <Input
-                type="number"
-                inputMode="numeric"
-                placeholder="reps"
-                value={set.reps}
-                onChange={(e) => onUpdateSet(exIdx, setIdx, "reps", e.target.value)}
-                className="h-9 tabular-nums"
-              />
-            </div>
-            <div className="col-span-2 flex justify-center">
-              <input
-                type="checkbox"
-                checked={set.is_warmup}
-                onChange={(e) => onUpdateSet(exIdx, setIdx, "is_warmup", e.target.checked)}
-                className="h-4 w-4 cursor-pointer"
-              />
-            </div>
-            <div className="col-span-1 flex justify-end">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => onRemoveSet(exIdx, setIdx)}
-                className="text-muted-foreground hover:text-destructive"
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        ))}
 
         {last && ex.sets.length > 0 && (
-          <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="mt-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             <Lightbulb className="h-3 w-3" />
             Last time: {last.sets.map((s) => `${s.weight_lbs}×${s.reps}`).join(", ")}
           </div>
         )}
 
-        <Button variant="ghost" size="sm" onClick={onAddSet} className="mt-3 text-primary">
-          <Plus className="h-3.5 w-3.5" />
+        <Button
+          variant="outline"
+          onClick={onAddSet}
+          className="mt-3 h-10 w-full text-primary sm:h-9 sm:w-auto"
+        >
+          <Plus className="h-4 w-4" />
           Add Set
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+function SetRow({
+  setIdx,
+  set,
+  onUpdate,
+  onRemove,
+}: {
+  setIdx: number;
+  set: LocalSet;
+  onUpdate: (field: keyof LocalSet, value: string | boolean) => void;
+  onRemove: () => void;
+}) {
+  const stepWeight = (delta: number) => {
+    const current = parseFloat(set.weight_lbs) || 0;
+    const next = Math.max(0, Math.round((current + delta) * 10) / 10);
+    onUpdate("weight_lbs", next === 0 ? "" : String(next));
+  };
+  const stepReps = (delta: number) => {
+    const current = parseInt(set.reps) || 0;
+    const next = Math.max(0, current + delta);
+    onUpdate("reps", next === 0 ? "" : String(next));
+  };
+
+  return (
+    <div className="rounded-md border border-border/40 bg-secondary/20 p-2.5">
+      <div className="mb-2 flex items-center justify-between text-xs">
+        <span className="font-medium tabular-nums text-muted-foreground">
+          Set {setIdx + 1}
+        </span>
+        <div className="flex items-center gap-3">
+          <label className="flex cursor-pointer items-center gap-1.5 text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={set.is_warmup}
+              onChange={(e) => onUpdate("is_warmup", e.target.checked)}
+              className="h-4 w-4 cursor-pointer"
+            />
+            Warmup
+          </label>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onRemove}
+            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Stepper
+          label="lbs"
+          value={set.weight_lbs}
+          inputMode="decimal"
+          onChange={(v) => onUpdate("weight_lbs", v)}
+          onStep={stepWeight}
+        />
+        <Stepper
+          label="reps"
+          value={set.reps}
+          inputMode="numeric"
+          onChange={(v) => onUpdate("reps", v)}
+          onStep={stepReps}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Stepper({
+  label,
+  value,
+  inputMode,
+  onChange,
+  onStep,
+}: {
+  label: string;
+  value: string;
+  inputMode: "decimal" | "numeric";
+  onChange: (v: string) => void;
+  onStep: (delta: number) => void;
+}) {
+  const stepDelta = inputMode === "decimal" ? 5 : 1;
+  return (
+    <div className="flex items-stretch gap-1">
+      <button
+        type="button"
+        onClick={() => onStep(-stepDelta)}
+        aria-label={`Decrease ${label}`}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border bg-background text-lg font-medium text-foreground/80 transition active:scale-95 hover:bg-secondary"
+      >
+        −
+      </button>
+      <Input
+        type="number"
+        inputMode={inputMode}
+        placeholder={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-11 flex-1 px-1 text-center text-base font-semibold tabular-nums"
+      />
+      <button
+        type="button"
+        onClick={() => onStep(stepDelta)}
+        aria-label={`Increase ${label}`}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border bg-background text-lg font-medium text-foreground/80 transition active:scale-95 hover:bg-secondary"
+      >
+        +
+      </button>
+    </div>
   );
 }

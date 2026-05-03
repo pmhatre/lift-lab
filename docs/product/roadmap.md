@@ -15,6 +15,18 @@
 - Alembic migrations, Pydantic schema validation, lifespan-managed startup
 - shadcn (Base UI variant) component system, lucide icons, dark-only theme
 
+## Shipped (mobile pass)
+
+- Mobile-first set-row layout — stepper inputs (`−` / `+`) for weight (5 lb) and reps (1), 44px tap targets
+- "Add Set" auto-copies the previous set's weight + reps (implicit copy-last-set)
+- Sticky Finish bar at the bottom of the viewport on mobile, with safe-area-inset padding for iOS PWA mode
+- PWA manifest (`/manifest.webmanifest`) + SVG icon → installable / "Add to Home Screen" works
+- Apple `apple-mobile-web-app-capable` metadata for fullscreen iOS PWA
+
+## Post-MVP — design done, build pending
+
+- **Session templates** ([ADR 0002](../decisions/0002-session-templates.md)) — user-created named starting points (e.g. "Weighted Chins/Dips", "Incline DB + Heavy Row"). Pick a template at session start; anchor exercises auto-populate with last-session pre-fill; rest of the session is flexible. Library page to manage. Replaces the day-type concept as the primary session-start affordance.
+
 ## Post-MVP — data integrations
 
 - **MacroFactor CSV import** — daily calories, macros, smoothed body weight. Schema (`nutrition_days`) already exists.
@@ -32,10 +44,12 @@
 
 ## Post-MVP — UX
 
-- **Mobile-logging optimizations** — even though the app is responsive, the logging form deserves dedicated mobile polish (numeric keyboards, larger tap targets, swipe-to-delete sets).
-- **Keyboard shortcuts** in logging flow (Enter → next set, Esc → cancel exercise).
-- **Optimistic updates** for set-level edits.
 - **Edit-existing-session flow** — the per-set/per-exercise endpoints exist but no UI uses them yet.
+- **Swipe-to-delete on set rows** — the explicit `X` works fine; swipe is a nice-to-have.
+- **Keyboard shortcuts** in logging flow (Enter → next set, Esc → cancel exercise) — desktop only.
+- **Optimistic updates** for set-level edits in the existing-session edit flow.
+- **Service worker for offline write queue** — current PWA installs but reads/writes still need network. Adding a service worker that caches the shell + queues writes when offline would be a real reliability upgrade for gym Wi-Fi.
+- **PNG icons** — the manifest currently ships a single SVG icon. Modern browsers render it fine, but native iOS "Add to Home Screen" prefers PNGs at specific sizes (180×180, 192×192, 512×512). Generate before any public release.
 
 ## Pre-public release checklist
 
