@@ -7,19 +7,20 @@ import json
 import io
 import datetime as dt
 from typing import Optional
+from zoneinfo import ZoneInfo
+
 from sqlmodel import Session, select
 from rapidfuzz import fuzz, process as rfprocess
 
 from models import Exercise, TrainingSession, SessionExercise, Set
 
-PT_OFFSET = dt.timedelta(hours=-8)  # PST; good enough for historical import
+PT_TZ = ZoneInfo("America/Los_Angeles")
 
 
 def utc_to_pt_date(dt_str: str) -> dt.date:
-    """Parse UTC datetime string and convert to PT date."""
+    """Parse UTC datetime string and convert to America/Los_Angeles date (DST-aware)."""
     d = dt.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-    pt_dt = d + PT_OFFSET
-    return pt_dt.date()
+    return d.astimezone(PT_TZ).date()
 
 
 def utc_to_datetime(dt_str: str) -> Optional[dt.datetime]:

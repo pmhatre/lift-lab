@@ -124,4 +124,4 @@ class PRRecord(SQLModel, table=True):
     pr_type: str
     pr_value: float
     previous_value: Optional[float] = Field(default=None)
-    created_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))

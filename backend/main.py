@@ -1,21 +1,47 @@
 import datetime as dt
 import json
 import os
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select, func, or_
 
-from database import create_db_and_tables, get_session
+from database import get_session
 from models import (
     Exercise, TrainingSession, SessionExercise, Set,
     NutritionDay, DexaScan, WhoopDay, Microcycle, PRRecord
 )
 from importer import import_fitnotes_csv
+from schemas import (
+    ExerciseCreate, ExerciseUpdate,
+    SessionCreate, SessionUpdate,
+    SessionExerciseCreate, SessionExerciseUpdate,
+    SetCreate, SetUpdate,
+    PRCheckRequest, FinalizeSession,
+)
 from seed import seed
 
-app = FastAPI(title="Lift Lab API", version="0.1.0")
+
+def _run_migrations() -> None:
+    from alembic import command
+    from alembic.config import Config as AlembicConfig
+
+    here = os.path.dirname(__file__)
+    cfg = AlembicConfig(os.path.join(here, "alembic.ini"))
+    cfg.set_main_option("script_location", os.path.join(here, "alembic"))
+    command.upgrade(cfg, "head")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _run_migrations()
+    seed()
+    yield
+
+
+app = FastAPI(title="Lift Lab API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,24 +50,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def on_startup():
-    # Run column migrations via raw DB connection before SQLModel touches tables
-    import sqlite3
-    conn = sqlite3.connect(os.path.join(os.path.dirname(__file__), "database.db"))
-    cur = conn.cursor()
-    for col, dtype in [("target_reps_low", "INTEGER"), ("target_reps_high", "INTEGER"), ("progression_enabled", "BOOLEAN DEFAULT FALSE")]:
-        try:
-            cur.execute(f"ALTER TABLE exercises ADD COLUMN {col} {dtype}")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-    conn.close()
-
-    create_db_and_tables()
-    seed()
 
 
 # ─── Exercises ────────────────────────────────────────────────────────────────
@@ -82,16 +90,16 @@ def _ex_to_dict(ex: Exercise):
 
 
 @app.post("/api/exercises")
-def create_exercise(data: dict, db: Session = Depends(get_session)):
+def create_exercise(body: ExerciseCreate, db: Session = Depends(get_session)):
     ex = Exercise(
-        name=data["name"],
-        aliases=json.dumps(data.get("aliases", [])),
-        primary_muscles=json.dumps(data.get("primary_muscles", [])),
-        secondary_muscles=json.dumps(data.get("secondary_muscles", [])),
-        equipment=data.get("equipment"),
-        movement_pattern=data.get("movement_pattern"),
-        is_compound=data.get("is_compound", False),
-        notes=data.get("notes"),
+        name=body.name,
+        aliases=json.dumps(body.aliases),
+        primary_muscles=json.dumps(body.primary_muscles),
+        secondary_muscles=json.dumps(body.secondary_muscles),
+        equipment=body.equipment,
+        movement_pattern=body.movement_pattern,
+        is_compound=body.is_compound,
+        notes=body.notes,
     )
     db.add(ex)
     db.commit()
@@ -100,18 +108,15 @@ def create_exercise(data: dict, db: Session = Depends(get_session)):
 
 
 @app.put("/api/exercises/{exercise_id}")
-def update_exercise(exercise_id: int, data: dict, db: Session = Depends(get_session)):
+def update_exercise(exercise_id: int, body: ExerciseUpdate, db: Session = Depends(get_session)):
     ex = db.get(Exercise, exercise_id)
     if not ex:
         raise HTTPException(404, "Exercise not found")
+    data = body.model_dump(exclude_unset=True)
     for k, v in data.items():
-        if k in ("aliases", "primary_muscles", "secondary_muscles") and isinstance(v, list):
-            setattr(ex, k, json.dumps(v))
-        elif k == "progression_enabled" and isinstance(v, bool):
-            setattr(ex, k, v)
-        elif k in ("target_reps_low", "target_reps_high"):
-            setattr(ex, k, v if v is not None else None)
-        elif hasattr(ex, k):
+        if k in ("aliases", "primary_muscles", "secondary_muscles"):
+            setattr(ex, k, json.dumps(v or []))
+        else:
             setattr(ex, k, v)
     db.add(ex)
     db.commit()
@@ -197,19 +202,75 @@ def list_sessions(
 
 
 @app.post("/api/sessions")
-def create_session(data: dict, db: Session = Depends(get_session)):
+def create_session(body: SessionCreate, db: Session = Depends(get_session)):
     s = TrainingSession(
-        session_date=dt.date.fromisoformat(data["date"]),
-        day_type=data.get("day_type"),
-        emphasis=data.get("emphasis"),
-        body_weight_lbs=data.get("body_weight_lbs"),
-        notes=data.get("notes"),
+        session_date=dt.date.fromisoformat(body.date),
+        day_type=body.day_type,
+        emphasis=body.emphasis,
+        body_weight_lbs=body.body_weight_lbs,
+        notes=body.notes,
         source="native",
     )
     db.add(s)
     db.commit()
     db.refresh(s)
     return _session_to_dict(s)
+
+
+@app.post("/api/sessions/finalize")
+def finalize_session(body: FinalizeSession, db: Session = Depends(get_session)):
+    """Persist a fully-formed session in one transaction. Skips empty sets
+    (no reps and no weight). Runs PR detection and returns the saved session
+    plus any new PRs."""
+    session_date = dt.date.fromisoformat(body.date) if body.date else dt.date.today()
+    s = TrainingSession(
+        session_date=session_date,
+        day_type=body.day_type,
+        body_weight_lbs=body.body_weight_lbs,
+        notes=body.notes,
+        source="native",
+    )
+    db.add(s)
+    db.flush()
+
+    for order, ex_in in enumerate(body.exercises):
+        ex = db.get(Exercise, ex_in.exercise_id)
+        if not ex:
+            raise HTTPException(404, f"Exercise {ex_in.exercise_id} not found")
+        se = SessionExercise(
+            session_id=s.id,
+            exercise_id=ex_in.exercise_id,
+            exercise_order=order,
+            notes=ex_in.notes,
+        )
+        db.add(se)
+        db.flush()
+
+        set_number = 0
+        for set_in in ex_in.sets:
+            if set_in.reps is None and set_in.weight_lbs is None:
+                continue
+            set_number += 1
+            db.add(Set(
+                session_exercise_id=se.id,
+                set_number=set_number,
+                reps=set_in.reps,
+                weight_lbs=set_in.weight_lbs,
+                is_warmup=set_in.is_warmup,
+                rpe=set_in.rpe,
+                rir=set_in.rir,
+                status="done",
+            ))
+
+    db.commit()
+    db.refresh(s)
+
+    new_prs = _record_prs_for_session(db, s.id)
+
+    return {
+        "session": _session_to_dict(s, include_exercises=True, db=db),
+        "new_prs": new_prs,
+    }
 
 
 @app.get("/api/sessions/{session_id}")
@@ -221,13 +282,16 @@ def get_session_detail(session_id: int, db: Session = Depends(get_session)):
 
 
 @app.put("/api/sessions/{session_id}")
-def update_session(session_id: int, data: dict, db: Session = Depends(get_session)):
+def update_session(session_id: int, body: SessionUpdate, db: Session = Depends(get_session)):
     s = db.get(TrainingSession, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
+    data = body.model_dump(exclude_unset=True)
     for k, v in data.items():
-        if k == "date":
+        if k == "date" and v is not None:
             s.session_date = dt.date.fromisoformat(v)
+        elif k in ("started_at", "ended_at") and isinstance(v, str):
+            setattr(s, k, dt.datetime.fromisoformat(v.replace("Z", "+00:00")))
         elif hasattr(s, k):
             setattr(s, k, v)
     db.add(s)
@@ -249,11 +313,11 @@ def delete_session(session_id: int, db: Session = Depends(get_session)):
 # ─── Session Exercises ────────────────────────────────────────────────────────
 
 @app.post("/api/sessions/{session_id}/exercises")
-def add_exercise_to_session(session_id: int, data: dict, db: Session = Depends(get_session)):
+def add_exercise_to_session(session_id: int, body: SessionExerciseCreate, db: Session = Depends(get_session)):
     s = db.get(TrainingSession, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
-    ex = db.get(Exercise, data["exercise_id"])
+    ex = db.get(Exercise, body.exercise_id)
     if not ex:
         raise HTTPException(404, "Exercise not found")
 
@@ -266,9 +330,9 @@ def add_exercise_to_session(session_id: int, data: dict, db: Session = Depends(g
 
     se = SessionExercise(
         session_id=session_id,
-        exercise_id=data["exercise_id"],
-        exercise_order=data.get("exercise_order", order),
-        notes=data.get("notes"),
+        exercise_id=body.exercise_id,
+        exercise_order=body.exercise_order if body.exercise_order is not None else order,
+        notes=body.notes,
     )
     db.add(se)
     db.commit()
@@ -277,13 +341,12 @@ def add_exercise_to_session(session_id: int, data: dict, db: Session = Depends(g
 
 
 @app.put("/api/session_exercises/{se_id}")
-def update_session_exercise(se_id: int, data: dict, db: Session = Depends(get_session)):
+def update_session_exercise(se_id: int, body: SessionExerciseUpdate, db: Session = Depends(get_session)):
     se = db.get(SessionExercise, se_id)
     if not se:
         raise HTTPException(404, "Not found")
-    for k, v in data.items():
-        if hasattr(se, k):
-            setattr(se, k, v)
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(se, k, v)
     db.add(se)
     db.commit()
     return {"ok": True}
@@ -302,7 +365,7 @@ def delete_session_exercise(se_id: int, db: Session = Depends(get_session)):
 # ─── Sets ─────────────────────────────────────────────────────────────────────
 
 @app.post("/api/session_exercises/{se_id}/sets")
-def add_set(se_id: int, data: dict, db: Session = Depends(get_session)):
+def add_set(se_id: int, body: SetCreate, db: Session = Depends(get_session)):
     se = db.get(SessionExercise, se_id)
     if not se:
         raise HTTPException(404, "Session exercise not found")
@@ -314,14 +377,14 @@ def add_set(se_id: int, data: dict, db: Session = Depends(get_session)):
 
     s = Set(
         session_exercise_id=se_id,
-        set_number=data.get("set_number", set_num),
-        reps=data.get("reps"),
-        weight_lbs=data.get("weight_lbs"),
-        is_warmup=data.get("is_warmup", False),
-        rpe=data.get("rpe"),
-        rir=data.get("rir"),
-        status=data.get("status", "done"),
-        notes=data.get("notes"),
+        set_number=body.set_number if body.set_number is not None else set_num,
+        reps=body.reps,
+        weight_lbs=body.weight_lbs,
+        is_warmup=body.is_warmup,
+        rpe=body.rpe,
+        rir=body.rir,
+        status=body.status,
+        notes=body.notes,
     )
     db.add(s)
     db.commit()
@@ -330,13 +393,12 @@ def add_set(se_id: int, data: dict, db: Session = Depends(get_session)):
 
 
 @app.put("/api/sets/{set_id}")
-def update_set(set_id: int, data: dict, db: Session = Depends(get_session)):
+def update_set(set_id: int, body: SetUpdate, db: Session = Depends(get_session)):
     s = db.get(Set, set_id)
     if not s:
         raise HTTPException(404, "Set not found")
-    for k, v in data.items():
-        if hasattr(s, k):
-            setattr(s, k, v)
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(s, k, v)
     db.add(s)
     db.commit()
     return _set_to_dict(s)
@@ -442,7 +504,8 @@ def analytics_volume(
 
 @app.get("/api/analytics/frequency")
 def analytics_frequency(weeks: int = 12, db: Session = Depends(get_session)):
-    end_date = dt.date.today()
+    latest = db.exec(select(func.max(TrainingSession.session_date))).one()
+    end_date = latest if latest else dt.date.today()
     start_date = end_date - dt.timedelta(weeks=weeks)
 
     sessions = db.exec(
@@ -652,7 +715,7 @@ async def import_fitnotes(
     content = await file.read()
     result = import_fitnotes_csv(content, db, force=force)
     import_status_store["fitnotes"] = {
-        "last_import": dt.datetime.utcnow().isoformat(),
+        "last_import": dt.datetime.now(dt.timezone.utc).isoformat(),
         **result
     }
     return result
@@ -707,18 +770,14 @@ def recent_prs(days: int = 30, limit: int = 10, db: Session = Depends(get_sessio
     ]
 
 
-@app.post("/api/prs/check")
-def check_prs(session_id: int, db: Session = Depends(get_session)):
-    """Check and record any PRs for a completed session."""
-    s = db.get(TrainingSession, session_id)
-    if not s:
-        raise HTTPException(404, "Session not found")
-
+def _record_prs_for_session(db: Session, session_id: int) -> list[dict]:
+    """Detect and persist PRs for a session. Idempotent — re-running on the
+    same session does not create duplicate PR rows."""
     ses_exercises = db.exec(
         select(SessionExercise).where(SessionExercise.session_id == session_id)
     ).all()
 
-    new_prs = []
+    new_prs: list[dict] = []
     for se in ses_exercises:
         ex = db.get(Exercise, se.exercise_id)
         if not ex:
@@ -736,11 +795,9 @@ def check_prs(session_id: int, db: Session = Depends(get_session)):
             continue
 
         max_weight = max((st.weight_lbs or 0) for st in working_sets)
-        volume_load = sum((st.weight_lbs or 0) * (st.reps or 0) for st in working_sets)
         best_set = max(working_sets, key=lambda st: (st.weight_lbs or 0) * (1 + (st.reps or 0) / 30))
         e1rm = round((best_set.weight_lbs or 0) * (1 + (best_set.reps or 0) / 30), 1) if best_set.weight_lbs else None
 
-        # Get all previous sessions for this exercise (before this session)
         prev_rows = db.exec(
             select(func.max(Set.weight_lbs), func.max((Set.weight_lbs or 0) * (1 + (Set.reps or 0) / 30)))
             .join(SessionExercise, Set.session_exercise_id == SessionExercise.id)
@@ -756,34 +813,47 @@ def check_prs(session_id: int, db: Session = Depends(get_session)):
         all_time_max_weight = prev_rows[0] or 0
         all_time_max_e1rm = prev_rows[1] or 0
 
-        # Check weight PR
-        if max_weight > all_time_max_weight:
-            pr = PRRecord(
+        existing_types = set(
+            db.exec(
+                select(PRRecord.pr_type).where(
+                    PRRecord.session_id == session_id,
+                    PRRecord.exercise_id == ex.id,
+                )
+            ).all()
+        )
+
+        if max_weight > all_time_max_weight and "weight" not in existing_types:
+            db.add(PRRecord(
                 session_id=session_id,
                 exercise_id=ex.id,
                 session_exercise_id=se.id,
                 pr_type="weight",
                 pr_value=max_weight,
                 previous_value=all_time_max_weight if all_time_max_weight > 0 else None,
-            )
-            db.add(pr)
+            ))
             new_prs.append({"exercise": ex.name, "type": "weight", "value": max_weight, "previous": all_time_max_weight})
 
-        # Check e1RM PR
-        if e1rm and e1rm > all_time_max_e1rm:
-            pr = PRRecord(
+        if e1rm and e1rm > all_time_max_e1rm and "e1rm" not in existing_types:
+            db.add(PRRecord(
                 session_id=session_id,
                 exercise_id=ex.id,
                 session_exercise_id=se.id,
                 pr_type="e1rm",
                 pr_value=e1rm,
                 previous_value=all_time_max_e1rm if all_time_max_e1rm > 0 else None,
-            )
-            db.add(pr)
+            ))
             new_prs.append({"exercise": ex.name, "type": "e1rm", "value": e1rm, "previous": all_time_max_e1rm})
 
     db.commit()
-    return {"prs": new_prs}
+    return new_prs
+
+
+@app.post("/api/prs/check")
+def check_prs(body: PRCheckRequest, db: Session = Depends(get_session)):
+    s = db.get(TrainingSession, body.session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    return {"prs": _record_prs_for_session(db, body.session_id)}
 
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -851,23 +921,23 @@ def dashboard(db: Session = Depends(get_session)):
 
     bw_trend = [{"date": k, "weight": v} for k, v in sorted(bw_map.items())]
 
-    # Recent PRs
     pr_rows = db.exec(
-        select(PRRecord, Exercise.name)
+        select(PRRecord, Exercise.name, TrainingSession.session_date)
         .join(Exercise, PRRecord.exercise_id == Exercise.id)
+        .join(TrainingSession, PRRecord.session_id == TrainingSession.id)
         .order_by(PRRecord.created_at.desc())
         .limit(10)
     ).all()
     recent_prs = [
         {
             "id": pr.id,
-            "date": str(db.get(TrainingSession, pr.session_id).session_date),
+            "date": str(session_date),
             "exercise_name": name,
             "pr_type": pr.pr_type,
             "pr_value": pr.pr_value,
             "previous_value": pr.previous_value,
         }
-        for pr, name in pr_rows
+        for pr, name, session_date in pr_rows
     ]
 
     return {
