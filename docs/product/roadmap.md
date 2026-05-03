@@ -12,7 +12,7 @@
 - Body composition view (placeholder for DEXA + MacroFactor)
 - Per-exercise progressive overload chart
 - React Server Components for read pages, recharts client islands for charts
-- Alembic migrations, Pydantic schema validation, lifespan-managed startup
+- Schema migrations, request body validation, opinionated startup hooks
 - shadcn (Base UI variant) component system, lucide icons, dark-only theme
 
 ## Shipped (mobile pass)
@@ -22,6 +22,14 @@
 - Sticky Finish bar at the bottom of the viewport on mobile, with safe-area-inset padding for iOS PWA mode
 - PWA manifest (`/manifest.webmanifest`) + SVG icon → installable / "Add to Home Screen" works
 - Apple `apple-mobile-web-app-capable` metadata for fullscreen iOS PWA
+
+## Shipped (Vercel migration)
+
+- Backend ported from FastAPI/SQLite to Next.js Route Handlers + Drizzle/Postgres ([ADR 0003](../decisions/0003-migrate-to-vercel-pattern.md))
+- Single-app architecture: Route Handlers + RSCs share a typed data layer (no HTTP roundtrip on server-rendered pages)
+- Neon Postgres provisioned via Vercel Marketplace
+- pnpm replaces npm; Drizzle replaces SQLModel + Alembic; Zod replaces Pydantic; papaparse + fuse.js replace Python csv + rapidfuzz
+- N+1 patterns from the original audit replaced with proper Postgres aggregations (jsonb unnesting, json_agg for nested set arrays)
 
 ## Post-MVP — design done, build pending
 

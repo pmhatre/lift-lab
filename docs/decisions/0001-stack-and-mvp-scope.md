@@ -1,6 +1,6 @@
 # 0001. Stack and MVP scope
 
-**Status:** accepted
+**Status:** superseded by [0003 — Migrate to Vercel pattern](./0003-migrate-to-vercel-pattern.md)
 
 **Date:** 2026-04-30
 

@@ -1,35 +1,30 @@
 # Lift Lab
 
-Personal fitness tracker — log lifting sessions, track progressive overload, and visualize volume and body composition over time. Single-user, SQLite-backed.
+Personal fitness tracker — log lifting sessions, track progressive overload, and visualize volume and body composition over time.
 
-Two services in one repo:
-- **`backend/`** — FastAPI + SQLModel + Alembic on SQLite
-- **`frontend/`** — Next.js 16 + React 19 + Tailwind v4 + shadcn (Base UI) + Recharts
+Single Next.js 16 app with Route Handlers as the backend and Postgres (Neon, via the Vercel Marketplace) as storage. Deployed on Vercel.
 
 ## Quickstart
 
-You'll need Python 3.12+ and Node 20+. [`uv`](https://github.com/astral-sh/uv) is recommended for the Python side.
-
-### Backend
-
-```sh
-cd backend
-uv venv --python 3.12 venv
-uv pip install -r requirements.txt --python venv/bin/python
-venv/bin/uvicorn main:app --reload
-```
-
-API runs on `http://127.0.0.1:8000`. On boot it runs Alembic migrations to head and seeds the exercise library if empty.
-
-### Frontend
+You'll need Node 20+ and [`pnpm`](https://pnpm.io/).
 
 ```sh
 cd frontend
-npm install
-npm run dev
+pnpm install
+
+# One-time setup (per clone): pull DB credentials from Vercel
+vercel link
+vercel env pull .env.local --yes
+
+# Apply migrations + seed the exercise library (idempotent)
+pnpm db:migrate
+pnpm db:seed
+
+# Run dev server
+pnpm dev
 ```
 
-UI runs on `http://localhost:3000`. `next.config.ts` rewrites `/api/*` to the backend so client-side fetches just work; React Server Components hit the backend directly via `BACKEND_URL` (defaults to `http://127.0.0.1:8000`).
+UI runs on `http://localhost:3000`. The Route Handlers under `app/api/` talk directly to Neon — no separate backend service.
 
 ## Importing existing data
 
@@ -38,7 +33,7 @@ UI runs on `http://localhost:3000`. `next.config.ts` rewrites `/api/*` to the ba
 1. In FitNotes: Settings → Export Data → grab the CSV
 2. Open `/import` in the UI, pick the file, click Import
 
-The importer fuzzy-matches exercise names against the seeded library (token-sort ratio ≥80) and auto-creates placeholder rows for anything it can't match — these get listed in the import result so you can fix their muscle groups later. Sessions are deduped by `(date, source="fitnotes")`; tick "Force re-import" if you want to overwrite.
+The importer fuzzy-matches exercise names against the seeded library (fuse.js threshold-based) and auto-creates placeholder rows for anything it can't match — these get listed in the import result so you can fix their muscle groups later. Sessions are deduped by `(date, source="fitnotes")`; tick "Force re-import" if you want to overwrite.
 
 ## What's in here
 
@@ -47,20 +42,11 @@ The importer fuzzy-matches exercise names against the seeded library (token-sort
 - **Progressive overload tracking** — set a target rep range per exercise; the system flags "Ready to progress" when your top sets hit the ceiling
 - **PR detection** — weight PRs and e1RM PRs (Epley) recorded automatically on session finish; idempotent so re-running is safe
 - **Analytics** — weekly volume by muscle group, training frequency, body composition (DEXA + scale weight + nutrition imports)
+- **Mobile-friendly logging** — sticky finish bar, stepper inputs, PWA installable
 
 ## Project layout
 
 ```
-backend/
-  main.py              # All FastAPI routes
-  schemas.py           # Pydantic request bodies
-  models.py            # SQLModel tables (Exercise, TrainingSession, ...)
-  database.py          # SQLite engine + session
-  importer.py          # FitNotes CSV ingestion (DST-safe via zoneinfo)
-  seed.py + seed_exercises.py
-  alembic/             # Migrations (auto-applied on startup)
-  requirements.txt
-
 frontend/
   src/app/             # Next App Router pages (RSC for read pages, client for write/filter)
     page.tsx                       # Dashboard
@@ -69,38 +55,61 @@ frontend/
     exercise/[id]/page.tsx         # Exercise history
     analytics/{volume,frequency,body-comp}/page.tsx
     import/page.tsx
+    api/                           # Route Handlers (CRUD, analytics, import, prs)
   src/components/
     ui/                # shadcn primitives
     charts/            # Recharts client islands
     site-nav.tsx, page-header.tsx, stat-card.tsx, range-select.tsx
+  src/db/
+    schema.ts          # Drizzle schema
+    index.ts           # Lazy getDb() — Drizzle + @neondatabase/serverless
+    seed.ts            # Idempotent seed script
+    seed-exercises.json
   src/lib/
     api.ts             # Client-side fetch wrapper
-    api-server.ts      # Server-side fetch (for RSCs, hits backend directly)
+    api-server.ts      # Server-side data access (RSCs call data layer directly)
+    api-helpers.ts     # Route Handler helpers (Zod parse, error JSON)
+    api-schemas.ts     # Zod schemas for request bodies
+    data/              # Drizzle queries shared by Route Handlers + RSCs
+    import/fitnotes.ts # FitNotes CSV ingestion
     constants.ts       # Day-type labels and other shared constants
     chart-theme.ts     # Recharts color palette + tooltip styling
+  drizzle/migrations/  # SQL migrations (drizzle-kit generate)
+
+docs/                  # Public-safe product + decision docs
+personal/              # Local-only training context (gitignored)
+_inbox/                # Raw brainstorm artifacts (gitignored)
 ```
 
-## Migrations
-
-Alembic auto-runs `upgrade head` on FastAPI startup. To add a migration:
+## Database migrations
 
 ```sh
-cd backend
-venv/bin/alembic revision --autogenerate -m "describe change"
-# Review the generated file under backend/alembic/versions/
+cd frontend
+
+# After editing src/db/schema.ts:
+pnpm db:generate            # creates a new SQL file under drizzle/migrations/
+# review the generated file
+pnpm db:migrate             # applies pending migrations to Neon
+
+# Inspecting current state:
+pnpm db:studio              # browser-based Drizzle Studio
 ```
 
-The next backend boot will apply it. To check current state: `venv/bin/alembic current`.
+`db:migrate` and `db:seed` use `dotenv-cli` to load `.env.local` — Drizzle Kit doesn't auto-load Next.js env files.
+
+## Deployment
+
+Pushed to `main` deploys via Vercel automatically. `lumara-health/lift-lab` is the project; Neon Postgres is provisioned through the Vercel Marketplace and injects `DATABASE_URL` at build time.
 
 ## Documentation
 
 - [`docs/product/principles.md`](./docs/product/principles.md) — design principles
 - [`docs/product/methodology.md`](./docs/product/methodology.md) — the training framework the app encodes
 - [`docs/product/roadmap.md`](./docs/product/roadmap.md) — what's shipped, what's next
-- [`docs/decisions/`](./docs/decisions/) — architecture decision records
+- [`docs/decisions/`](./docs/decisions/) — architecture decision records (see [0003](./docs/decisions/0003-migrate-to-vercel-pattern.md) for the migration to this stack)
 - [`CLAUDE.md`](./CLAUDE.md) — AI-agent conventions and stack gotchas
 
 ## Notes
 
-- Database file (`backend/database.db`) is gitignored. Each clone starts fresh; re-import your FitNotes CSV to populate.
 - Local environment overrides for Claude Code permissions live in `.claude/settings.local.json` (gitignored). The committed `.claude/settings.json` is the canonical baseline.
+- `personal/` (gitignored) holds the maintainer's training context — current program, history, body composition data, ongoing brainstorms. Never committed.
