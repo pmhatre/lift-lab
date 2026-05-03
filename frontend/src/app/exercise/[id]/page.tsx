@@ -1,338 +1,191 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api, ExerciseHistory, BtlData, Exercise } from "@/lib/api";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  ReferenceLine,
-} from "recharts";
+import { notFound } from "next/navigation";
+import { ArrowLeft, Trophy, TrendingDown, TrendingUp, Minus } from "lucide-react";
 
-export default function ExerciseHistoryPage() {
-  const params = useParams();
-  const id = parseInt(params.id as string);
-  const [history, setHistory] = useState<ExerciseHistory | null>(null);
-  const [btl, setBtl] = useState<BtlData | null>(null);
-  const [loading, setLoading] = useState(true);
+import { serverApi } from "@/lib/api-server";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
+import { ExerciseHistoryChart } from "@/components/charts/exercise-history-chart";
+import { ExerciseSettingsPanel } from "@/components/exercise-settings-panel";
+import { cn } from "@/lib/utils";
 
-  useEffect(() => {
-    Promise.all([api.exerciseHistory(id), api.beatTheLogbook(id)]).then(([h, b]) => {
-      setHistory(h);
-      setBtl(b);
-      setLoading(false);
-    });
-  }, [id]);
+export const dynamic = "force-dynamic";
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400 animate-pulse">Loading...</div>
-      </div>
-    );
-  }
+const STATUS: Record<
+  string,
+  { label: string; color: string; Icon: typeof Trophy }
+> = {
+  weight_pr: {
+    label: "Weight PR",
+    color: "text-[color:var(--color-warning)]",
+    Icon: Trophy,
+  },
+  rep_pr: {
+    label: "Rep PR",
+    color: "text-[color:var(--color-success)]",
+    Icon: TrendingUp,
+  },
+  maintained: { label: "Maintained", color: "text-muted-foreground", Icon: Minus },
+  regression: { label: "Regression", color: "text-destructive", Icon: TrendingDown },
+};
 
-  if (!history) return <div className="text-gray-400">Exercise not found.</div>;
+export default async function ExerciseHistoryPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id: rawId } = await params;
+  const id = parseInt(rawId);
+  if (Number.isNaN(id)) notFound();
+
+  const [history, btl] = await Promise.all([
+    serverApi.exerciseHistory(id).catch(() => null),
+    serverApi.beatTheLogbook(id).catch(() => null),
+  ]);
+  if (!history) notFound();
 
   const ex = history.exercise;
   const hist = history.history;
-
   const maxWeight = Math.max(...hist.map((h) => h.max_weight ?? 0), 0);
-  const prEntry = hist.find((h) => h.max_weight === maxWeight);
-
-  const STATUS_COLORS: Record<string, string> = {
-    weight_pr: "text-yellow-400",
-    rep_pr: "text-green-400",
-    maintained: "text-gray-400",
-    regression: "text-red-400",
-  };
-
-  const STATUS_LABELS: Record<string, string> = {
-    weight_pr: "🏆 Weight PR",
-    rep_pr: "📈 Rep PR",
-    maintained: "Maintained",
-    regression: "⬇️ Regression",
-  };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{ex.name}</h1>
-          <div className="flex gap-2 mt-1">
-            {ex.primary_muscles.map((m) => (
-              <span key={m} className="text-xs bg-indigo-900 text-indigo-300 px-2 py-0.5 rounded-full">
-                {m}
-              </span>
-            ))}
-            {ex.secondary_muscles.map((m) => (
-              <span key={m} className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">
-                {m}
-              </span>
-            ))}
-          </div>
-        </div>
-        <Link href="/" className="text-gray-400 hover:text-white text-sm border border-gray-700 px-3 py-1.5 rounded-lg">
-          ← Dashboard
-        </Link>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <PageHeader
+        title={ex.name}
+        actions={
+          <Link href="/" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <ArrowLeft className="h-4 w-4" />
+            Dashboard
+          </Link>
+        }
+      />
+
+      <div className="flex flex-wrap gap-1.5">
+        {ex.primary_muscles.map((m) => (
+          <Badge
+            key={m}
+            className="border-primary/30 bg-primary/15 text-primary"
+            variant="outline"
+          >
+            {m}
+          </Badge>
+        ))}
+        {ex.secondary_muscles.map((m) => (
+          <Badge key={m} variant="secondary" className="font-normal">
+            {m}
+          </Badge>
+        ))}
       </div>
 
-      {/* Exercise Settings */}
-      <SettingsPanel exercise={ex} onUpdate={(updated) => {
-        setHistory((prev) => prev ? { ...prev, exercise: updated } : prev);
-        setBtl((prev) => prev ? { ...prev, exercise: updated } : prev);
-      }} />
+      <ExerciseSettingsPanel exercise={ex} />
 
-      {/* Beat the Logbook Card */}
       {btl?.last_session && (
-        <div className="bg-gray-900 border border-indigo-800 rounded-xl p-4">
-          <h2 className="font-semibold text-indigo-300 mb-3">Beat the Logbook</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <div className="text-xs text-gray-400">Last Top Set</div>
-              <div className="text-lg font-bold">
-                {btl.last_session.top_set_weight} lbs
-              </div>
+        <Card className="border-primary/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm uppercase tracking-wide text-primary">
+              Beat the Logbook
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <Stat label="Last Top Set" value={`${btl.last_session.top_set_weight} lbs`} />
+              <Stat
+                label="Last Reps"
+                value={btl.last_session.sets.map((s) => s.reps).join(", ")}
+              />
+              <Stat
+                label="All-Time PR"
+                value={`${maxWeight} lbs`}
+                valueClass="text-[color:var(--color-warning)]"
+              />
+              {btl.progression_status && STATUS[btl.progression_status] && (
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Status
+                  </div>
+                  <div
+                    className={cn(
+                      "mt-1 flex items-center gap-1.5 text-lg font-semibold",
+                      STATUS[btl.progression_status].color
+                    )}
+                  >
+                    {(() => {
+                      const { Icon } = STATUS[btl.progression_status!];
+                      return <Icon className="h-4 w-4" />;
+                    })()}
+                    {STATUS[btl.progression_status].label}
+                  </div>
+                </div>
+              )}
             </div>
-            <div>
-              <div className="text-xs text-gray-400">Last Reps</div>
-              <div className="text-lg font-bold">
-                {btl.last_session.sets.map((s) => s.reps).join(", ")}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-400">All-Time PR</div>
-              <div className="text-lg font-bold text-yellow-400">
-                {maxWeight} lbs
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-400">Status</div>
-              <div className={`text-lg font-bold ${btl.progression_status ? STATUS_COLORS[btl.progression_status] : ""}`}>
-                {btl.progression_status ? STATUS_LABELS[btl.progression_status] : "—"}
-              </div>
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Progressive Overload Chart */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-        <h2 className="font-semibold mb-4">Progressive Overload</h2>
-        {hist.length === 0 ? (
-          <div className="flex items-center justify-center h-48 text-gray-500 text-sm">
-            No history yet.
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={hist} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis
-                dataKey="date"
-                tick={{ fill: "#9ca3af", fontSize: 11 }}
-                tickFormatter={(v) => v.slice(5)}
-                interval="preserveStartEnd"
-              />
-              <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} domain={["auto", "auto"]} />
-              <Tooltip
-                contentStyle={{ background: "#111827", border: "1px solid #374151", borderRadius: "8px" }}
-                labelStyle={{ color: "#e5e7eb" }}
-                formatter={(v, name) => [`${v}`, name as string]}
-              />
-              {maxWeight > 0 && (
-                <ReferenceLine y={maxWeight} stroke="#f59e0b" strokeDasharray="4 2" label={{ value: "PR", fill: "#f59e0b", fontSize: 11 }} />
-              )}
-              <Line
-                type="monotone"
-                dataKey="max_weight"
-                name="Max Weight (lbs)"
-                stroke="#6366f1"
-                strokeWidth={2}
-                dot={{ fill: "#6366f1", r: 3 }}
-                activeDot={{ r: 5 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="e1rm"
-                name="Est. 1RM"
-                stroke="#10b981"
-                strokeWidth={1.5}
-                strokeDasharray="4 2"
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Progressive overload</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ExerciseHistoryChart data={hist} prWeight={maxWeight} />
+        </CardContent>
+      </Card>
 
-      {/* Set history table */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-        <h2 className="font-semibold mb-3">Session History (last 20)</h2>
-        <div className="space-y-2">
-          {hist.slice(-20).reverse().map((h) => (
-            <Link
-              key={h.session_id}
-              href={`/session/${h.session_id}`}
-              className="block p-3 rounded-lg bg-gray-800 hover:bg-gray-750 transition-colors"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium">{h.date}</span>
-                <span className="text-sm text-gray-400">
-                  Vol: {Math.round(h.volume_load).toLocaleString()} lbs
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {h.sets.map((s, i) => (
-                  <span
-                    key={i}
-                    className={`text-xs px-2 py-0.5 rounded ${
-                      s.weight_lbs === h.max_weight
-                        ? "bg-indigo-900 text-indigo-200"
-                        : "bg-gray-700 text-gray-300"
-                    }`}
-                  >
-                    {s.weight_lbs}×{s.reps}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Session history (last 20)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 pt-0">
+          {hist
+            .slice(-20)
+            .reverse()
+            .map((h) => (
+              <Link
+                key={h.session_id}
+                href={`/session/${h.session_id}`}
+                className="block rounded-md border border-border/50 bg-secondary/30 p-3 transition-colors hover:bg-secondary/60"
+              >
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-sm font-medium tabular-nums">{h.date}</span>
+                  <span className="text-sm text-muted-foreground tabular-nums">
+                    Vol: {Math.round(h.volume_load).toLocaleString()} lbs
                   </span>
-                ))}
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {h.sets.map((s, i) => (
+                    <Badge
+                      key={i}
+                      variant={s.weight_lbs === h.max_weight ? "default" : "secondary"}
+                      className="font-normal tabular-nums"
+                    >
+                      {s.weight_lbs}×{s.reps}
+                    </Badge>
+                  ))}
+                </div>
+              </Link>
+            ))}
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
-function SettingsPanel({
-  exercise,
-  onUpdate,
+function Stat({
+  label,
+  value,
+  valueClass,
 }: {
-  exercise: Exercise;
-  onUpdate: (updated: Exercise) => void;
+  label: string;
+  value: string;
+  valueClass?: string;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [low, setLow] = useState(exercise.target_reps_low?.toString() ?? "");
-  const [high, setHigh] = useState(exercise.target_reps_high?.toString() ?? "");
-  const [enabled, setEnabled] = useState(exercise.progression_enabled);
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    const lowVal = low ? parseInt(low) : null;
-    const highVal = high ? parseInt(high) : null;
-    const updated = await api.updateExercise(exercise.id, {
-      target_reps_low: lowVal || undefined,
-      target_reps_high: highVal || undefined,
-      progression_enabled: enabled,
-    });
-    onUpdate(updated);
-    setSaving(false);
-    setEditing(false);
-  };
-
-  const cancel = () => {
-    setLow(exercise.target_reps_low?.toString() ?? "");
-    setHigh(exercise.target_reps_high?.toString() ?? "");
-    setEnabled(exercise.progression_enabled);
-    setEditing(false);
-  };
-
-  if (!editing) {
-    const hasRange = exercise.target_reps_low && exercise.target_reps_high;
-    return (
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-300">Progressive Overload</h3>
-            {hasRange ? (
-              <p className="text-xs text-gray-400 mt-1">
-                Target: {exercise.target_reps_low}–{exercise.target_reps_high} reps
-                {exercise.progression_enabled
-                  ? <span className="text-green-400 ml-2">• Active</span>
-                  : <span className="text-gray-500 ml-2">• Paused</span>
-                }
-              </p>
-            ) : (
-              <p className="text-xs text-gray-500 mt-1">No rep range set</p>
-            )}
-          </div>
-          <button
-            onClick={() => setEditing(true)}
-            className="text-xs text-indigo-400 hover:text-indigo-300 px-3 py-1.5 rounded-lg border border-gray-700"
-          >
-            {hasRange ? "Edit" : "Set Rep Range"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-gray-900 border border-indigo-800 rounded-xl p-4 space-y-4">
-      <h3 className="text-sm font-semibold text-indigo-300">Edit Progression Settings</h3>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="text-xs text-gray-400 block mb-1">Rep Range Low</label>
-          <input
-            type="number"
-            value={low}
-            onChange={(e) => setLow(e.target.value)}
-            placeholder="e.g. 6"
-            className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-gray-400 block mb-1">Rep Range High</label>
-          <input
-            type="number"
-            value={high}
-            onChange={(e) => setHigh(e.target.value)}
-            placeholder="e.g. 8"
-            className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm text-gray-300">Enable Progression Tracking</div>
-          <div className="text-xs text-gray-500">When enabled, the app tracks rep ceilings and suggests weight increases</div>
-        </div>
-        <button
-          onClick={() => setEnabled(!enabled)}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            enabled ? "bg-green-600" : "bg-gray-600"
-          }`}
-        >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              enabled ? "translate-x-6" : "translate-x-1"
-            }`}
-          />
-        </button>
-      </div>
-
-      <div className="flex gap-2 pt-2">
-        <button
-          onClick={save}
-          disabled={saving}
-          className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
-        >
-          {saving ? "Saving..." : "Save"}
-        </button>
-        <button
-          onClick={cancel}
-          className="text-gray-400 hover:text-white px-4 py-2 rounded-lg text-sm border border-gray-700"
-        >
-          Cancel
-        </button>
+    <div>
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={cn("mt-1 text-lg font-semibold tabular-nums", valueClass)}>
+        {value}
       </div>
     </div>
   );

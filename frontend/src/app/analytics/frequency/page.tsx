@@ -1,30 +1,28 @@
-"use client";
+import { serverApi } from "@/lib/api-server";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/page-header";
+import { StatCard } from "@/components/stat-card";
+import { RangeSelect } from "@/components/range-select";
+import { FrequencyBarChart } from "@/components/charts/frequency-chart";
 
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  ReferenceLine,
-} from "recharts";
+export const dynamic = "force-dynamic";
 
-export default function FrequencyPage() {
-  const [data, setData] = useState<Array<{ week: string; sessions: number }>>([]);
-  const [weeks, setWeeks] = useState(16);
-  const [loading, setLoading] = useState(true);
+const RANGES = [
+  { value: "8", label: "Last 8 weeks" },
+  { value: "16", label: "Last 16 weeks" },
+  { value: "24", label: "Last 24 weeks" },
+  { value: "52", label: "Last 52 weeks" },
+];
 
-  useEffect(() => {
-    setLoading(true);
-    api.frequency(weeks).then((d) => {
-      setData(d.data);
-      setLoading(false);
-    });
-  }, [weeks]);
+export default async function FrequencyPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ weeks?: string }>;
+}) {
+  const sp = await searchParams;
+  const weeks = parseInt(sp.weeks ?? "16") || 16;
+
+  const { data } = await serverApi.frequency(weeks);
 
   const avgSessions =
     data.length > 0
@@ -32,92 +30,71 @@ export default function FrequencyPage() {
       : 0;
 
   const maxSessions = Math.max(...data.map((d) => d.sessions), 0);
+  const activeWeeks = data.filter((d) => d.sessions > 0).length;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Training Frequency</h1>
-        <select
-          value={weeks}
-          onChange={(e) => setWeeks(parseInt(e.target.value))}
-          className="bg-gray-800 text-white rounded-lg px-3 py-1.5 text-sm"
-        >
-          <option value={8}>Last 8 weeks</option>
-          <option value={16}>Last 16 weeks</option>
-          <option value={24}>Last 24 weeks</option>
-          <option value={52}>Last 52 weeks</option>
-        </select>
+      <PageHeader
+        title="Frequency"
+        description="Training sessions per week"
+        actions={
+          <RangeSelect paramKey="weeks" defaultValue="16" options={RANGES} />
+        }
+      />
+
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard
+          label="Average"
+          value={avgSessions.toString()}
+          sub="sessions / week"
+          tone="primary"
+        />
+        <StatCard
+          label="Best week"
+          value={String(maxSessions)}
+          sub="sessions"
+          tone="success"
+        />
+        <StatCard label="Active weeks" value={String(activeWeeks)} />
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
-          <div className="text-2xl font-bold">{avgSessions}</div>
-          <div className="text-sm text-gray-400">avg sessions/week</div>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
-          <div className="text-2xl font-bold">{maxSessions}</div>
-          <div className="text-sm text-gray-400">best week</div>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
-          <div className="text-2xl font-bold">
-            {data.filter((d) => d.sessions > 0).length}
-          </div>
-          <div className="text-sm text-gray-400">active weeks</div>
-        </div>
-      </div>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Sessions per week</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <FrequencyBarChart data={data} avg={avgSessions} />
+        </CardContent>
+      </Card>
 
-      {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-gray-400 animate-pulse">Loading...</div>
-        </div>
-      ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <h2 className="font-semibold mb-4">Sessions per Week</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis
-                dataKey="week"
-                tick={{ fill: "#9ca3af", fontSize: 10 }}
-                tickFormatter={(v) => v.slice(5)}
-                interval={Math.floor(data.length / 10)}
-              />
-              <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} allowDecimals={false} />
-              <Tooltip
-                contentStyle={{ background: "#111827", border: "1px solid #374151", borderRadius: "8px" }}
-                labelStyle={{ color: "#e5e7eb" }}
-              />
-              <ReferenceLine
-                y={avgSessions}
-                stroke="#6366f1"
-                strokeDasharray="4 2"
-                label={{ value: `Avg: ${avgSessions}`, fill: "#6366f1", fontSize: 11 }}
-              />
-              <Bar dataKey="sessions" fill="#6366f1" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Week details */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-        <h2 className="font-semibold mb-3">Recent Weeks</h2>
-        <div className="space-y-1">
-          {[...data].reverse().slice(0, 12).map((d) => (
-            <div key={d.week} className="flex items-center gap-3 py-1">
-              <span className="text-sm text-gray-400 w-24">{d.week}</span>
-              <div className="flex-1 bg-gray-800 rounded-full h-3">
-                <div
-                  className="h-3 rounded-full bg-indigo-600"
-                  style={{ width: `${(d.sessions / maxSessions) * 100}%` }}
-                />
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Recent weeks</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-1.5">
+          {[...data]
+            .reverse()
+            .slice(0, 12)
+            .map((d) => (
+              <div key={d.week} className="flex items-center gap-3 py-1">
+                <span className="w-24 text-sm text-muted-foreground tabular-nums">
+                  {d.week}
+                </span>
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{
+                      width: `${maxSessions ? (d.sessions / maxSessions) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
+                <span className="w-8 text-right text-sm font-medium tabular-nums">
+                  {d.sessions}
+                </span>
               </div>
-              <span className="text-sm font-medium w-8 text-right">{d.sessions}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+            ))}
+        </CardContent>
+      </Card>
     </div>
   );
 }

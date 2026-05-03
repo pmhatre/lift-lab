@@ -116,6 +116,27 @@ export interface RecentExercise {
   last_used: string;
 }
 
+export interface FinalizePayload {
+  date: string;
+  day_type?: string;
+  body_weight_lbs?: number;
+  notes?: string;
+  exercises: Array<{
+    exercise_id: number;
+    notes?: string;
+    sets: Array<{
+      reps: number | null;
+      weight_lbs: number | null;
+      is_warmup: boolean;
+    }>;
+  }>;
+}
+
+export interface FinalizeResponse {
+  session: TrainingSession;
+  new_prs: Array<{ exercise: string; type: string; value: number; previous: number }>;
+}
+
 // ─── API functions ────────────────────────────────────────────────────────────
 
 export const api = {
@@ -150,6 +171,11 @@ export const api = {
   session: (id: number) => apiFetch<TrainingSession>(`/api/sessions/${id}`),
   createSession: (data: Partial<TrainingSession>) =>
     apiFetch<TrainingSession>("/api/sessions", { method: "POST", body: JSON.stringify(data) }),
+  finalizeSession: (payload: FinalizePayload) =>
+    apiFetch<FinalizeResponse>("/api/sessions/finalize", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   updateSession: (id: number, data: Partial<TrainingSession>) =>
     apiFetch<TrainingSession>(`/api/sessions/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteSession: (id: number) =>

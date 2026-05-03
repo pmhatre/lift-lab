@@ -1,26 +1,145 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
 
 :root {
-  --foreground-rgb: 255, 255, 255;
-  --background-start-rgb: 3, 7, 18;
-  --background-end-rgb: 3, 7, 18;
+  --radius: 0.625rem;
+
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+
+  /* Indigo primary */
+  --primary: oklch(0.62 0.19 268);
+  --primary-foreground: oklch(0.985 0 0);
+
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+
+  --destructive: oklch(0.65 0.22 25);
+  --success: oklch(0.7 0.18 155);
+  --warning: oklch(0.78 0.16 75);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.62 0.19 268);
+
+  /* Chart palette — distinct hues that work for muscle groups */
+  --chart-1: oklch(0.62 0.19 268);   /* indigo */
+  --chart-2: oklch(0.7 0.18 155);    /* emerald */
+  --chart-3: oklch(0.78 0.16 75);    /* amber */
+  --chart-4: oklch(0.65 0.22 25);    /* red */
+  --chart-5: oklch(0.66 0.18 305);   /* violet */
+  --chart-6: oklch(0.72 0.14 200);   /* cyan */
+  --chart-7: oklch(0.72 0.18 350);   /* pink */
+  --chart-8: oklch(0.78 0.16 130);   /* lime */
+
+  --grid: oklch(1 0 0 / 8%);
 }
 
-body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-start-rgb));
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.62 0.19 268);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.65 0.22 25);
+  --success: oklch(0.7 0.18 155);
+  --warning: oklch(0.78 0.16 75);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.62 0.19 268);
+  --chart-1: oklch(0.62 0.19 268);
+  --chart-2: oklch(0.7 0.18 155);
+  --chart-3: oklch(0.78 0.16 75);
+  --chart-4: oklch(0.65 0.22 25);
+  --chart-5: oklch(0.66 0.18 305);
+  --chart-6: oklch(0.72 0.14 200);
+  --chart-7: oklch(0.72 0.18 350);
+  --chart-8: oklch(0.78 0.16 130);
+  --grid: oklch(1 0 0 / 8%);
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
 }
-::-webkit-scrollbar-track {
-  background: #1f2937;
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Tabular numerals — critical for weight/rep displays so digits don't shift width */
+  .tabular,
+  input[type="number"] {
+    font-variant-numeric: tabular-nums;
+  }
 }
-::-webkit-scrollbar-thumb {
-  background: #4b5563;
-  border-radius: 3px;
-}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: oklch(1 0 0 / 12%); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: oklch(1 0 0 / 20%); }

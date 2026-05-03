@@ -1,150 +1,167 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api, TrainingSession } from "@/lib/api";
+import { notFound } from "next/navigation";
+import { ArrowLeft, Clock, Layers, TrendingUp, Scale } from "lucide-react";
 
-const DAY_TYPE_LABELS: Record<string, string> = {
-  chest_back: "Chest & Back",
-  legs_core: "Legs & Core",
-  shoulders_arms: "Shoulders & Arms",
-  full_body: "Full Body",
-};
+import { serverApi } from "@/lib/api-server";
+import { dayTypeLabel } from "@/lib/constants";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { PageHeader } from "@/components/page-header";
+import { StatCard } from "@/components/stat-card";
 
-export default function SessionDetailPage() {
-  const params = useParams();
-  const id = parseInt(params.id as string);
-  const [session, setSession] = useState<TrainingSession | null>(null);
-  const [loading, setLoading] = useState(true);
+export const dynamic = "force-dynamic";
 
-  useEffect(() => {
-    api.session(id).then((s) => {
-      setSession(s);
-      setLoading(false);
-    });
-  }, [id]);
+export default async function SessionDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id: rawId } = await params;
+  const id = parseInt(rawId);
+  if (Number.isNaN(id)) notFound();
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400 animate-pulse">Loading session...</div>
-      </div>
-    );
-  }
+  const session = await serverApi.session(id).catch(() => null);
+  if (!session) notFound();
 
-  if (!session) return <div className="text-gray-400">Session not found.</div>;
-
-  const totalSets = session.exercises?.reduce((acc, ex) => acc + ex.sets.filter((s) => !s.is_warmup).length, 0) ?? 0;
-  const totalVolume = session.exercises?.reduce(
-    (acc, ex) => acc + ex.sets.filter((s) => !s.is_warmup).reduce((a, s) => a + (s.weight_lbs ?? 0) * (s.reps ?? 0), 0),
-    0
-  ) ?? 0;
+  const totalSets =
+    session.exercises?.reduce(
+      (acc, ex) => acc + ex.sets.filter((s) => !s.is_warmup).length,
+      0
+    ) ?? 0;
+  const totalVolume =
+    session.exercises?.reduce(
+      (acc, ex) =>
+        acc +
+        ex.sets
+          .filter((s) => !s.is_warmup)
+          .reduce((a, s) => a + (s.weight_lbs ?? 0) * (s.reps ?? 0), 0),
+      0
+    ) ?? 0;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">
-            {DAY_TYPE_LABELS[session.day_type ?? ""] || "Training Session"}
-          </h1>
-          <p className="text-gray-400">{session.date}</p>
-        </div>
-        <div className="flex gap-2">
-          <Link
-            href="/"
-            className="text-gray-400 hover:text-white px-3 py-1.5 rounded-lg border border-gray-700 text-sm"
-          >
-            ← Dashboard
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader
+        title={dayTypeLabel(session.day_type)}
+        description={session.date}
+        actions={
+          <Link href="/" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <ArrowLeft className="h-4 w-4" />
+            Dashboard
           </Link>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {session.duration_minutes && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
-            <div className="text-xl font-bold">{session.duration_minutes}</div>
-            <div className="text-xs text-gray-400">minutes</div>
-          </div>
+          <StatCard
+            label="Duration"
+            value={`${session.duration_minutes} min`}
+            icon={Clock}
+          />
         )}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
-          <div className="text-xl font-bold">{totalSets}</div>
-          <div className="text-xs text-gray-400">working sets</div>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
-          <div className="text-xl font-bold">{Math.round(totalVolume).toLocaleString()}</div>
-          <div className="text-xs text-gray-400">volume (lbs)</div>
-        </div>
+        <StatCard
+          label="Working Sets"
+          value={String(totalSets)}
+          icon={Layers}
+          tone="primary"
+        />
+        <StatCard
+          label="Volume"
+          value={`${Math.round(totalVolume).toLocaleString()} lbs`}
+          icon={TrendingUp}
+          tone="success"
+        />
         {session.body_weight_lbs && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
-            <div className="text-xl font-bold">{session.body_weight_lbs}</div>
-            <div className="text-xs text-gray-400">body weight</div>
-          </div>
+          <StatCard
+            label="Body Weight"
+            value={`${session.body_weight_lbs} lbs`}
+            icon={Scale}
+          />
         )}
       </div>
 
-      {/* Exercises */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         {(session.exercises ?? []).map((ex) => {
           const workingSets = ex.sets.filter((s) => !s.is_warmup);
           const warmupSets = ex.sets.filter((s) => s.is_warmup);
-          const maxWeight = workingSets.reduce((max, s) => Math.max(max, s.weight_lbs ?? 0), 0);
+          const maxWeight = workingSets.reduce(
+            (max, s) => Math.max(max, s.weight_lbs ?? 0),
+            0
+          );
 
           return (
-            <div key={ex.id} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 bg-gray-800">
-                <Link
-                  href={`/exercise/${ex.exercise_id}`}
-                  className="font-semibold hover:text-indigo-300 transition-colors"
-                >
-                  {ex.exercise_name}
-                </Link>
-                <div className="text-sm text-gray-400">
-                  {workingSets.length} sets × {maxWeight} lbs
+            <Card key={ex.id} className="overflow-hidden">
+              <CardHeader className="bg-secondary/40 py-3">
+                <div className="flex items-center justify-between">
+                  <Link
+                    href={`/exercise/${ex.exercise_id}`}
+                    className="font-semibold transition-colors hover:text-primary"
+                  >
+                    {ex.exercise_name}
+                  </Link>
+                  <span className="text-sm text-muted-foreground tabular-nums">
+                    {workingSets.length} × {maxWeight} lbs
+                  </span>
                 </div>
-              </div>
-              <div className="p-4">
+              </CardHeader>
+              <CardContent className="space-y-2 pt-4">
                 {warmupSets.length > 0 && (
-                  <div className="mb-2">
-                    <div className="text-xs text-gray-500 mb-1">Warmup</div>
-                    <div className="flex flex-wrap gap-2">
-                      {warmupSets.map((s, i) => (
-                        <span key={i} className="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded">
+                  <div>
+                    <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                      Warmup
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {warmupSets.map((s) => (
+                        <Badge
+                          key={s.id}
+                          variant="secondary"
+                          className="font-normal tabular-nums"
+                        >
                           {s.weight_lbs ?? 0} × {s.reps ?? 0}
-                        </span>
+                        </Badge>
                       ))}
                     </div>
+                    <Separator className="my-3" />
                   </div>
                 )}
-                <div className="grid grid-cols-12 gap-2 text-xs text-gray-500 mb-1">
+                <div className="grid grid-cols-12 gap-2 text-xs uppercase tracking-wide text-muted-foreground">
                   <div className="col-span-2">Set</div>
                   <div className="col-span-4">Weight</div>
                   <div className="col-span-3">Reps</div>
-                  <div className="col-span-3">Vol</div>
+                  <div className="col-span-3">Volume</div>
                 </div>
                 {workingSets.map((s, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-center py-1 border-t border-gray-800">
-                    <div className="col-span-2 text-sm text-gray-500">{i + 1}</div>
-                    <div className="col-span-4 text-sm font-medium">{s.weight_lbs ?? 0} lbs</div>
-                    <div className="col-span-3 text-sm">{s.reps ?? 0}</div>
-                    <div className="col-span-3 text-sm text-gray-400">
+                  <div
+                    key={s.id}
+                    className="grid grid-cols-12 items-center gap-2 border-t border-border py-1.5 first:border-t-0 first:pt-0"
+                  >
+                    <div className="col-span-2 text-sm text-muted-foreground tabular-nums">
+                      {i + 1}
+                    </div>
+                    <div className="col-span-4 text-sm font-semibold tabular-nums">
+                      {s.weight_lbs ?? 0} lbs
+                    </div>
+                    <div className="col-span-3 text-sm tabular-nums">{s.reps ?? 0}</div>
+                    <div className="col-span-3 text-sm text-muted-foreground tabular-nums">
                       {Math.round((s.weight_lbs ?? 0) * (s.reps ?? 0))}
                     </div>
                   </div>
                 ))}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           );
         })}
       </div>
 
       {session.notes && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <h3 className="font-semibold mb-2 text-sm text-gray-400">Notes</h3>
-          <p className="text-sm">{session.notes}</p>
-        </div>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Notes</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 text-sm">{session.notes}</CardContent>
+        </Card>
       )}
     </div>
   );

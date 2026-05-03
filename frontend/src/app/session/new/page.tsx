@@ -1,16 +1,35 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { api, Exercise, TrainingSession, BtlData, RecentExercise } from "@/lib/api";
+import {
+  ArrowUp,
+  Zap,
+  Trophy,
+  TrendingUp,
+  Search,
+  X,
+  Plus,
+  Target,
+  Lightbulb,
+} from "lucide-react";
 
-const DAY_TYPES = [
-  { value: "", label: "No type" },
-  { value: "chest_back", label: "Chest & Back" },
-  { value: "legs_core", label: "Legs & Core" },
-  { value: "shoulders_arms", label: "Shoulders & Arms" },
-  { value: "full_body", label: "Full Body" },
-];
+import { api, Exercise, BtlData, RecentExercise } from "@/lib/api";
+import { DAY_TYPE_OPTIONS } from "@/lib/constants";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
+import { cn } from "@/lib/utils";
 
 interface LocalSet {
   reps: string;
@@ -19,7 +38,6 @@ interface LocalSet {
 }
 
 interface LocalExercise {
-  seId: number | null;
   exercise: Exercise;
   sets: LocalSet[];
   btl: BtlData | null;
@@ -27,65 +45,46 @@ interface LocalExercise {
 
 export default function NewSessionPage() {
   const router = useRouter();
-  const [session, setSession] = useState<TrainingSession | null>(null);
   const [sessionDate, setSessionDate] = useState(new Date().toISOString().slice(0, 10));
   const [dayType, setDayType] = useState("");
   const [exercises, setExercises] = useState<LocalExercise[]>([]);
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Exercise[]>([]);
   const [saving, setSaving] = useState(false);
-  const [sessionCreated, setSessionCreated] = useState(false);
   const [recentExercises, setRecentExercises] = useState<RecentExercise[]>([]);
   const [showRecent, setShowRecent] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  // Create session on mount
   useEffect(() => {
-    api.createSession({ date: sessionDate, day_type: dayType || undefined, source: "native" }).then((s) => {
-      setSession(s);
-      setSessionCreated(true);
-    });
     api.recentExercises(20).then(setRecentExercises);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Search exercises
   useEffect(() => {
-    if (!search.trim()) {
-      setSearchResults([]);
-      return;
-    }
+    const trimmed = search.trim();
+    if (!trimmed) return;
     const timer = setTimeout(() => {
-      api.exercises(search).then(setSearchResults);
+      api.exercises(trimmed).then(setSearchResults);
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
 
-  const addExercise = useCallback(
-    async (exercise: Exercise) => {
-      if (!session) return;
-      const { id: seId } = await api.addExercise(session.id, exercise.id);
-      const btl = await api.beatTheLogbook(exercise.id);
+  const visibleSearchResults = search.trim() ? searchResults : [];
 
-      // Pre-fill sets from last session if available
-      let initialSets: LocalSet[] = [{ reps: "", weight_lbs: "", is_warmup: false }];
-      if (btl?.last_session?.sets.length) {
-        initialSets = btl.last_session.sets.map((s) => ({
-          reps: String(s.reps ?? ""),
-          weight_lbs: String(s.weight_lbs ?? ""),
-          is_warmup: false,
-        }));
-      }
-
-      setExercises((prev) => [
-        ...prev,
-        { seId, exercise, sets: initialSets, btl },
-      ]);
-      setSearch("");
-      setSearchResults([]);
-      setShowRecent(false);
-    },
-    [session]
-  );
+  const addExercise = useCallback(async (exercise: Exercise) => {
+    const btl = await api.beatTheLogbook(exercise.id);
+    let initialSets: LocalSet[] = [{ reps: "", weight_lbs: "", is_warmup: false }];
+    if (btl?.last_session?.sets.length) {
+      initialSets = btl.last_session.sets.map((s) => ({
+        reps: String(s.reps ?? ""),
+        weight_lbs: String(s.weight_lbs ?? ""),
+        is_warmup: false,
+      }));
+    }
+    setExercises((prev) => [...prev, { exercise, sets: initialSets, btl }]);
+    setSearch("");
+    setSearchResults([]);
+    setShowRecent(false);
+  }, []);
 
   const addSet = (exIdx: number) => {
     setExercises((prev) => {
@@ -98,7 +97,12 @@ export default function NewSessionPage() {
     });
   };
 
-  const updateSet = (exIdx: number, setIdx: number, field: keyof LocalSet, value: string | boolean) => {
+  const updateSet = (
+    exIdx: number,
+    setIdx: number,
+    field: keyof LocalSet,
+    value: string | boolean
+  ) => {
     setExercises((prev) => {
       const next = [...prev];
       const sets = [...next[exIdx].sets];
@@ -119,91 +123,82 @@ export default function NewSessionPage() {
     });
   };
 
-  const removeExercise = async (exIdx: number) => {
-    const ex = exercises[exIdx];
-    if (ex.seId) {
-      await api.removeExercise(ex.seId);
-    }
+  const removeExercise = (exIdx: number) => {
     setExercises((prev) => prev.filter((_, i) => i !== exIdx));
   };
 
   const saveAndFinish = async () => {
-    if (!session) return;
     setSaving(true);
     try {
-      for (const ex of exercises) {
-        if (!ex.seId) continue;
-        for (let i = 0; i < ex.sets.length; i++) {
-          const s = ex.sets[i];
-          const reps = parseInt(s.reps) || undefined;
-          const weight = parseFloat(s.weight_lbs) || undefined;
-          if (!reps && !weight) continue;
-          await api.addSet(ex.seId, {
-            set_number: i + 1,
-            reps: reps ?? null,
-            weight_lbs: weight ?? null,
+      const payload = {
+        date: sessionDate,
+        day_type: dayType && dayType !== "_none" ? dayType : undefined,
+        exercises: exercises.map((ex) => ({
+          exercise_id: ex.exercise.id,
+          sets: ex.sets.map((s) => ({
+            reps: s.reps ? parseInt(s.reps) : null,
+            weight_lbs: s.weight_lbs ? parseFloat(s.weight_lbs) : null,
             is_warmup: s.is_warmup,
-          });
-        }
-      }
-      // Check for PRs
-      await api.checkPRs(session.id);
-      router.push(`/session/${session.id}`);
+          })),
+        })),
+      };
+      const result = await api.finalizeSession(payload);
+      router.push(`/session/${result.session.id}`);
     } finally {
       setSaving(false);
     }
   };
 
-  if (!sessionCreated) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400 animate-pulse">Creating session...</div>
-      </div>
-    );
-  }
+  const hasContent = exercises.length > 0;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Log Session</h1>
-        <button
-          onClick={saveAndFinish}
-          disabled={saving}
-          className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-5 py-2 rounded-lg font-medium"
-        >
-          {saving ? "Saving..." : "Finish Session"}
-        </button>
-      </div>
-
-      {/* Session meta */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-wrap gap-4">
-        <div>
-          <label className="text-xs text-gray-400 block mb-1">Date</label>
-          <input
-            type="date"
-            value={sessionDate}
-            onChange={(e) => setSessionDate(e.target.value)}
-            className="bg-gray-800 text-white rounded-lg px-3 py-1.5 text-sm"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-gray-400 block mb-1">Day Type</label>
-          <select
-            value={dayType}
-            onChange={(e) => setDayType(e.target.value)}
-            className="bg-gray-800 text-white rounded-lg px-3 py-1.5 text-sm"
+    <div className="mx-auto max-w-4xl space-y-6">
+      <PageHeader
+        title="Log Session"
+        actions={
+          <Button
+            onClick={saveAndFinish}
+            disabled={saving || !hasContent}
+            className="bg-[color:var(--color-success)] hover:bg-[color:var(--color-success)]/85"
           >
-            {DAY_TYPES.map((dt) => (
-              <option key={dt.value} value={dt.value}>
-                {dt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+            {saving ? "Saving..." : "Finish Session"}
+          </Button>
+        }
+      />
 
-      {/* Exercise list */}
-      <div className="space-y-4">
+      <Card>
+        <CardContent className="flex flex-wrap items-end gap-4 p-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="date" className="text-xs">
+              Date
+            </Label>
+            <Input
+              id="date"
+              type="date"
+              value={sessionDate}
+              onChange={(e) => setSessionDate(e.target.value)}
+              className="w-[170px]"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Day Type</Label>
+            <Select value={dayType} onValueChange={(v) => setDayType(v ?? "")}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="No type" />
+              </SelectTrigger>
+              <SelectContent>
+                {DAY_TYPE_OPTIONS.map((dt) => (
+                  <SelectItem key={dt.value || "_none"} value={dt.value || "_none"}>
+                    {dt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-3">
         {exercises.map((ex, exIdx) => (
           <ExerciseCard
             key={exIdx}
@@ -217,53 +212,68 @@ export default function NewSessionPage() {
         ))}
       </div>
 
-      {/* Add exercise */}
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-4">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search exercises to add..."
-            value={search}
-            onFocus={() => { setShowRecent(true); }}
-            onChange={(e) => { setSearch(e.target.value); setShowRecent(true); }}
-            className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+      <Card>
+        <CardContent className="p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={searchRef}
+              type="text"
+              placeholder="Search exercises to add..."
+              value={search}
+              onFocus={() => setShowRecent(true)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setShowRecent(true);
+              }}
+              className="pl-9"
+            />
 
-          {/* Recent exercises quick-select or search results */}
-          {showRecent && search.trim().length === 0 && recentExercises.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg z-10 max-h-64 overflow-y-auto shadow-xl">
-              <div className="px-3 py-1.5 text-xs text-gray-500 font-medium border-b border-gray-700">Recent</div>
-              {recentExercises.map((ex) => (
-                <button
-                  key={ex.id}
-                  onClick={() => api.exercises(ex.name).then((r) => { if (r.length) addExercise(r[0]); })}
-                  className="w-full text-left px-4 py-2.5 hover:bg-gray-700 text-sm"
-                >
-                  <span className="font-medium">{ex.name}</span>
-                  <span className="text-gray-500 ml-2 text-xs">{ex.last_used}</span>
-                </button>
-              ))}
-            </div>
-          )}
+            {showRecent && search.trim().length === 0 && recentExercises.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
+                <div className="border-b border-border px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                  Recent
+                </div>
+                {recentExercises.map((ex) => (
+                  <button
+                    key={ex.id}
+                    onClick={() =>
+                      api.exercises(ex.name).then((r) => {
+                        if (r.length) addExercise(r[0]);
+                      })
+                    }
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-secondary"
+                  >
+                    <span className="font-medium">{ex.name}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {ex.last_used}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
 
-          {searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg z-10 max-h-64 overflow-y-auto shadow-xl">
-              {searchResults.map((ex) => (
-                <button
-                  key={ex.id}
-                  onClick={() => addExercise(ex)}
-                  className="w-full text-left px-4 py-2.5 hover:bg-gray-700 text-sm"
-                >
-                  <span className="font-medium">{ex.name}</span>
-                  {ex.primary_muscles.length > 0 && (
-                    <span className="text-gray-400 ml-2">{ex.primary_muscles.join(", ")}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+            {visibleSearchResults.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
+                {visibleSearchResults.map((ex) => (
+                  <button
+                    key={ex.id}
+                    onClick={() => addExercise(ex)}
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-secondary"
+                  >
+                    <span className="font-medium">{ex.name}</span>
+                    {ex.primary_muscles.length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {ex.primary_muscles.join(", ")}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -289,81 +299,110 @@ function ExerciseCard({
   const exercise = ex.exercise;
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-800">
-        <div>
-          <h3 className="font-semibold">{exercise.name}</h3>
-          <div className="text-xs text-gray-400">{exercise.primary_muscles.join(", ")}</div>
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between bg-secondary/40 px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="truncate font-semibold">{exercise.name}</h3>
+          {exercise.primary_muscles.length > 0 && (
+            <div className="text-xs text-muted-foreground">
+              {exercise.primary_muscles.join(", ")}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          {/* Ready to Progress badge */}
           {exercise.progression_enabled && rtp && (
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-              rtp === "ready" ? "bg-green-900 text-green-300" :
-              rtp === "close" ? "bg-yellow-900 text-yellow-300" :
-              "bg-gray-700 text-gray-400"
-            }`}>
-              {rtp === "ready" ? "⬆️ Ready" : rtp === "close" ? "⚡ Close" : "Working"}
-            </span>
+            <Badge
+              variant="outline"
+              className={cn(
+                "gap-1",
+                rtp === "ready" &&
+                  "border-[color:var(--color-success)]/40 text-[color:var(--color-success)]",
+                rtp === "close" &&
+                  "border-[color:var(--color-warning)]/40 text-[color:var(--color-warning)]",
+                rtp === "working" && "text-muted-foreground"
+              )}
+            >
+              {rtp === "ready" ? <ArrowUp className="h-3 w-3" /> : null}
+              {rtp === "close" ? <Zap className="h-3 w-3" /> : null}
+              {rtp === "ready" ? "Ready" : rtp === "close" ? "Close" : "Working"}
+            </Badge>
           )}
-          <button
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={onRemoveExercise}
-            className="text-gray-500 hover:text-red-400 text-sm px-2"
+            className="text-muted-foreground hover:text-destructive"
           >
-            ✕
-          </button>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Beat the Logbook sidebar */}
       {last && (
-        <div className="px-4 py-2 bg-indigo-950 border-b border-indigo-900 text-sm">
-          <span className="text-indigo-300 font-medium">Last: </span>
-          <span className="text-white">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-primary/5 px-4 py-2 text-sm">
+          <span className="text-xs uppercase tracking-wide text-primary">Last</span>
+          <span className="tabular-nums">
             {last.top_set_weight} lbs × {last.sets.map((s) => s.reps).join(", ")} reps
           </span>
           {btl?.progression_status === "weight_pr" && (
-            <span className="ml-2 text-yellow-400">🏆 Weight PR</span>
+            <Badge
+              variant="outline"
+              className="gap-1 border-[color:var(--color-warning)]/40 text-[color:var(--color-warning)]"
+            >
+              <Trophy className="h-3 w-3" />
+              Weight PR
+            </Badge>
           )}
           {btl?.progression_status === "rep_pr" && (
-            <span className="ml-2 text-green-400">📈 Rep PR</span>
+            <Badge
+              variant="outline"
+              className="gap-1 border-[color:var(--color-success)]/40 text-[color:var(--color-success)]"
+            >
+              <TrendingUp className="h-3 w-3" />
+              Rep PR
+            </Badge>
           )}
-          <span className="text-gray-400 ml-2">({last.date})</span>
+          <span className="text-xs text-muted-foreground tabular-nums">({last.date})</span>
           {exercise.target_reps_high && (
-            <span className="text-gray-500 ml-2">🎯 {exercise.target_reps_low}–{exercise.target_reps_high} reps</span>
+            <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
+              <Target className="h-3 w-3" />
+              {exercise.target_reps_low}–{exercise.target_reps_high} reps
+            </span>
           )}
         </div>
       )}
 
-      {/* Sets */}
-      <div className="p-4">
-        <div className="grid grid-cols-12 gap-2 text-xs text-gray-500 mb-2 px-1">
+      <CardContent className="p-4">
+        <div className="mb-2 grid grid-cols-12 gap-2 px-1 text-xs uppercase tracking-wide text-muted-foreground">
           <div className="col-span-1">#</div>
-          <div className="col-span-4">Weight (lbs)</div>
+          <div className="col-span-4">Weight</div>
           <div className="col-span-4">Reps</div>
-          <div className="col-span-2">Warmup</div>
+          <div className="col-span-2 text-center">Warmup</div>
           <div className="col-span-1"></div>
         </div>
         {ex.sets.map((set, setIdx) => (
-          <div key={setIdx} className="grid grid-cols-12 gap-2 items-center mb-2">
-            <div className="col-span-1 text-gray-500 text-sm">{setIdx + 1}</div>
+          <div key={setIdx} className="mb-2 grid grid-cols-12 items-center gap-2">
+            <div className="col-span-1 text-sm text-muted-foreground tabular-nums">
+              {setIdx + 1}
+            </div>
             <div className="col-span-4">
-              <input
+              <Input
                 type="number"
+                inputMode="decimal"
                 placeholder="lbs"
                 value={set.weight_lbs}
                 onChange={(e) => onUpdateSet(exIdx, setIdx, "weight_lbs", e.target.value)}
-                className="w-full bg-gray-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="h-9 tabular-nums"
               />
             </div>
             <div className="col-span-4">
-              <input
+              <Input
                 type="number"
+                inputMode="numeric"
                 placeholder="reps"
                 value={set.reps}
                 onChange={(e) => onUpdateSet(exIdx, setIdx, "reps", e.target.value)}
-                className="w-full bg-gray-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="h-9 tabular-nums"
               />
             </div>
             <div className="col-span-2 flex justify-center">
@@ -371,34 +410,34 @@ function ExerciseCard({
                 type="checkbox"
                 checked={set.is_warmup}
                 onChange={(e) => onUpdateSet(exIdx, setIdx, "is_warmup", e.target.checked)}
-                className="w-4 h-4"
+                className="h-4 w-4 cursor-pointer"
               />
             </div>
-            <div className="col-span-1">
-              <button
+            <div className="col-span-1 flex justify-end">
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={() => onRemoveSet(exIdx, setIdx)}
-                className="text-gray-600 hover:text-red-400 text-xs"
+                className="text-muted-foreground hover:text-destructive"
               >
-                ✕
-              </button>
+                <X className="h-3.5 w-3.5" />
+              </Button>
             </div>
           </div>
         ))}
 
-        {/* Hint from last session */}
         {last && ex.sets.length > 0 && (
-          <div className="text-xs text-gray-500 mt-1 mb-2">
-            💡 Last time: {last.sets.map((s) => `${s.weight_lbs}×${s.reps}`).join(", ")}
+          <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Lightbulb className="h-3 w-3" />
+            Last time: {last.sets.map((s) => `${s.weight_lbs}×${s.reps}`).join(", ")}
           </div>
         )}
 
-        <button
-          onClick={onAddSet}
-          className="mt-2 text-sm text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
-        >
-          + Add Set
-        </button>
-      </div>
-    </div>
+        <Button variant="ghost" size="sm" onClick={onAddSet} className="mt-3 text-primary">
+          <Plus className="h-3.5 w-3.5" />
+          Add Set
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
