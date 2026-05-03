@@ -30,3 +30,9 @@ Thumbs.db
 
 # Claude Code
 .claude/settings.local.json
+
+# Brainstorm inbox — raw artifacts, not for commit
+_inbox/
+
+# Personal training context — local mirror of Claude.ai brainstorm, not for commit
+personal/

@@ -2,6 +2,17 @@
 
 Guidance for AI agents working in this repo. See `README.md` for the human overview.
 
+## Where to read first
+
+Before suggesting features or making product decisions:
+
+- [`docs/product/principles.md`](./docs/product/principles.md) — the design opinions the app is built around
+- [`docs/product/methodology.md`](./docs/product/methodology.md) — the training framework the app encodes
+- [`docs/product/roadmap.md`](./docs/product/roadmap.md) — what's shipped, what's next
+- [`docs/decisions/`](./docs/decisions/) — architecture decision records
+
+If a `personal/` directory exists at the repo root (gitignored), that's the maintainer's training context — read it for nuance on feature priorities. Don't reference it from anything that gets committed.
+
 ## Stack gotchas that bite
 
 - **This is Next.js 16 + React 19.** The frontend's `AGENTS.md` is load-bearing: APIs and conventions may differ from training data. Read `frontend/node_modules/next/dist/docs/` before writing Next-specific code.

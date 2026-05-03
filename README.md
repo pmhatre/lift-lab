@@ -92,8 +92,15 @@ venv/bin/alembic revision --autogenerate -m "describe change"
 
 The next backend boot will apply it. To check current state: `venv/bin/alembic current`.
 
+## Documentation
+
+- [`docs/product/principles.md`](./docs/product/principles.md) — design principles
+- [`docs/product/methodology.md`](./docs/product/methodology.md) — the training framework the app encodes
+- [`docs/product/roadmap.md`](./docs/product/roadmap.md) — what's shipped, what's next
+- [`docs/decisions/`](./docs/decisions/) — architecture decision records
+- [`CLAUDE.md`](./CLAUDE.md) — AI-agent conventions and stack gotchas
+
 ## Notes
 
 - Database file (`backend/database.db`) is gitignored. Each clone starts fresh; re-import your FitNotes CSV to populate.
 - Local environment overrides for Claude Code permissions live in `.claude/settings.local.json` (gitignored). The committed `.claude/settings.json` is the canonical baseline.
-- See [`CLAUDE.md`](./CLAUDE.md) for AI-agent conventions and stack gotchas.
