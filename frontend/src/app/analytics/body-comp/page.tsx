@@ -40,11 +40,13 @@ export default async function BodyCompPage({
 
   const weightData = new Map<string, { date: string; macFactor?: number; session?: number }>();
   data.nutrition.forEach((n) => {
+    if (n.body_weight_lbs == null) return;
     const existing = weightData.get(n.date) || { date: n.date };
     existing.macFactor = n.body_weight_lbs;
     weightData.set(n.date, existing);
   });
   data.session_weights.forEach((s) => {
+    if (s.body_weight_lbs == null) return;
     const existing = weightData.get(s.date) || { date: s.date };
     existing.session = s.body_weight_lbs;
     weightData.set(s.date, existing);

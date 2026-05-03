@@ -1,15 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ['100.77.14.107', 'openclaws-mac-mini'],
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://127.0.0.1:8000/api/:path*',
-      },
-    ];
-  },
+  allowedDevOrigins: ["100.77.14.107", "openclaws-mac-mini"],
 };
 
 export default nextConfig;

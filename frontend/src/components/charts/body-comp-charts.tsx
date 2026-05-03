@@ -78,10 +78,10 @@ export function BodyWeightTrendChart({
 
 interface DexaPoint {
   date: string;
-  total_lbs: number;
-  lean_lbs: number;
-  fat_lbs: number;
-  bf_pct: number;
+  total_lbs: number | null;
+  lean_lbs: number | null;
+  fat_lbs: number | null;
+  bf_pct: number | null;
 }
 
 export function DexaMassChart({ data }: { data: DexaPoint[] }) {

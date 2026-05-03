@@ -1,60 +1,58 @@
 /**
- * Server-side fetch helpers for React Server Components.
+ * Server-side data access for React Server Components.
  *
- * Uses the absolute backend URL (BACKEND_URL env var, defaults to localhost:8000)
- * so RSCs hit FastAPI directly without going through the Next.js rewrite hop.
+ * Calls the data layer directly — no HTTP roundtrip. Same code path the
+ * Route Handlers use, just bypassing the request/response shell.
  */
+import {
+  beatTheLogbook,
+  bodyComposition,
+  dashboard,
+  exerciseHistory,
+  frequency,
+  volumeByMuscleGroup,
+} from "./data/analytics";
+import { recentExercises } from "./data/exercises";
+import { getSessionDetail } from "./data/sessions";
+
 import type {
-  ExerciseHistory,
-  BtlData,
-  TrainingSession,
-  PRRecord,
-  VolumeData,
-  RecentExercise,
-} from "./api";
+  ExerciseHistoryResult,
+  BtlResult,
+  VolumeResult,
+  FrequencyResult,
+  BodyCompositionResult,
+  DashboardResult,
+} from "./data/analytics";
+import type { RecentExerciseDto } from "./data/exercises";
+import type { SessionDto } from "./data/serializers";
 
-const BACKEND = process.env.BACKEND_URL ?? "http://127.0.0.1:8000";
-
-async function get<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BACKEND}${path}`, {
-    ...init,
-    cache: "no-store",
-    headers: { Accept: "application/json", ...(init?.headers ?? {}) },
-  });
-  if (!res.ok) throw new Error(`Backend ${res.status} on ${path}: ${await res.text()}`);
-  return res.json() as Promise<T>;
-}
-
-export interface DashboardData {
-  today_session: TrainingSession | null;
-  recent_sessions: TrainingSession[];
-  sessions_this_week: number;
-  body_weight_trend: Array<{ date: string; weight: number }>;
-  recent_prs: PRRecord[];
-}
+// Re-export the DTO types so RSC pages can `import type` from here.
+export type {
+  ExerciseHistoryResult,
+  BtlResult,
+  VolumeResult,
+  FrequencyResult,
+  BodyCompositionResult,
+  DashboardResult,
+  RecentExerciseDto,
+  SessionDto,
+};
 
 export const serverApi = {
-  dashboard: () => get<DashboardData>("/api/dashboard"),
-  volume: (params?: { start?: string; end?: string; group_by?: string }) => {
-    const qs = new URLSearchParams();
-    if (params?.start) qs.set("start", params.start);
-    if (params?.end) qs.set("end", params.end);
-    if (params?.group_by) qs.set("group_by", params.group_by);
-    return get<VolumeData>(`/api/analytics/volume${qs.size ? `?${qs}` : ""}`);
-  },
-  frequency: (weeks?: number) =>
-    get<{ data: Array<{ week: string; sessions: number }> }>(
-      `/api/analytics/frequency${weeks ? `?weeks=${weeks}` : ""}`
-    ),
-  bodyComposition: (days?: number) =>
-    get<{
-      nutrition: Array<{ date: string; body_weight_lbs: number; calories: number }>;
-      dexa_scans: Array<{ date: string; total_lbs: number; lean_lbs: number; fat_lbs: number; bf_pct: number }>;
-      session_weights: Array<{ date: string; body_weight_lbs: number }>;
-    }>(`/api/analytics/body-composition${days ? `?days=${days}` : ""}`),
-  session: (id: number) => get<TrainingSession>(`/api/sessions/${id}`),
-  exerciseHistory: (id: number) => get<ExerciseHistory>(`/api/analytics/exercise/${id}/history`),
-  beatTheLogbook: (id: number) => get<BtlData>(`/api/analytics/beat-the-logbook/${id}`),
-  recentExercises: (limit = 20) =>
-    get<RecentExercise[]>(`/api/exercises/recent?limit=${limit}`),
+  dashboard: (): Promise<DashboardResult> => dashboard(),
+  volume: (params?: { start?: string; end?: string; group_by?: string }): Promise<VolumeResult> =>
+    volumeByMuscleGroup({
+      start: params?.start,
+      end: params?.end,
+      groupBy: (params?.group_by as "week" | "session" | undefined) ?? "week",
+    }),
+  frequency: (weeks?: number): Promise<FrequencyResult> => frequency(weeks ?? 12),
+  bodyComposition: (days?: number): Promise<BodyCompositionResult> =>
+    bodyComposition(days ?? 90),
+  session: async (id: number): Promise<SessionDto | null> => getSessionDetail(id),
+  exerciseHistory: async (id: number): Promise<ExerciseHistoryResult | null> =>
+    exerciseHistory(id),
+  beatTheLogbook: async (id: number): Promise<BtlResult | null> => beatTheLogbook(id),
+  recentExercises: async (limit = 20): Promise<RecentExerciseDto[]> =>
+    recentExercises(limit),
 };

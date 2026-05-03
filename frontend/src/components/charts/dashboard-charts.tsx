@@ -61,7 +61,7 @@ export function VolumeBarChart({
 export function BodyWeightLineChart({
   data,
 }: {
-  data: Array<{ date: string; weight: number }>;
+  data: Array<{ date: string; weight: number | null }>;
 }) {
   if (data.length === 0) {
     return (
