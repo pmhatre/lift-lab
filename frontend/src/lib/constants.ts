@@ -19,3 +19,32 @@ export function dayTypeLabel(t: string | null | undefined, fallback = "Training 
   // Free-text values (e.g. "Chest & Back" or any custom string) pass through.
   return DAY_TYPE_LABELS[t] ?? t;
 }
+
+// Canonical muscle group taxonomy (matches docs/product/methodology.md).
+// Used by the create-exercise form so users pick from a known set rather
+// than typing free-text and producing analytics-incompatible strings.
+export const MUSCLE_GROUPS = [
+  "Chest",
+  "Upper Back",
+  "Lats",
+  "Front Delts",
+  "Middle Delts",
+  "Rear Delts",
+  "Biceps",
+  "Triceps",
+  "Quadriceps",
+  "Hamstrings",
+  "Glutes",
+  "Calves",
+  "Abs/Core",
+  "Lower Back",
+];
+
+export const EQUIPMENT_OPTIONS = [
+  { value: "barbell", label: "Barbell" },
+  { value: "dumbbell", label: "Dumbbell" },
+  { value: "cable", label: "Cable" },
+  { value: "machine", label: "Machine" },
+  { value: "bodyweight", label: "Bodyweight" },
+  { value: "kettlebell", label: "Kettlebell" },
+];

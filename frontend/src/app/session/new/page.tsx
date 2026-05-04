@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
+import { CreateExerciseSheet } from "@/components/create-exercise-sheet";
 import { cn } from "@/lib/utils";
 
 interface LocalSet {
@@ -67,7 +68,6 @@ export default function NewSessionPage() {
   const exactMatch = visibleSearchResults.some(
     (e) => e.name.toLowerCase() === trimmedSearch.toLowerCase()
   );
-  const [creating, setCreating] = useState(false);
 
   const addExercise = useCallback(async (exercise: Exercise) => {
     const btl = await api.beatTheLogbook(exercise.id);
@@ -85,15 +85,18 @@ export default function NewSessionPage() {
     setShowRecent(false);
   }, []);
 
-  const createAndAddExercise = useCallback(
-    async (name: string) => {
-      setCreating(true);
-      try {
-        const created = await api.createExercise({ name });
-        await addExercise(created);
-      } finally {
-        setCreating(false);
-      }
+  const [createSheetOpen, setCreateSheetOpen] = useState(false);
+  const [createSheetName, setCreateSheetName] = useState("");
+
+  const openCreateSheet = useCallback((name: string) => {
+    setCreateSheetName(name);
+    setCreateSheetOpen(true);
+  }, []);
+
+  const handleCreated = useCallback(
+    async (exercise: Exercise) => {
+      setCreateSheetOpen(false);
+      await addExercise(exercise);
     },
     [addExercise]
   );
@@ -232,7 +235,7 @@ export default function NewSessionPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="overflow-visible">
         <CardContent className="p-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -303,18 +306,15 @@ export default function NewSessionPage() {
                 ))}
                 {showCreateOption && !exactMatch && (
                   <button
-                    onClick={() => createAndAddExercise(trimmedSearch)}
-                    disabled={creating}
-                    className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-primary transition-colors hover:bg-secondary disabled:opacity-50"
+                    onClick={() => openCreateSheet(trimmedSearch)}
+                    className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-primary transition-colors hover:bg-secondary"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     <span>
-                      {creating ? "Creating…" : "Create new exercise: "}
-                      {!creating && (
-                        <span className="font-medium text-foreground">
-                          &ldquo;{trimmedSearch}&rdquo;
-                        </span>
-                      )}
+                      Create new exercise:{" "}
+                      <span className="font-medium text-foreground">
+                        &ldquo;{trimmedSearch}&rdquo;
+                      </span>
                     </span>
                   </button>
                 )}
@@ -351,6 +351,13 @@ export default function NewSessionPage() {
           {saving ? "Saving..." : "Finish Session"}
         </Button>
       </div>
+
+      <CreateExerciseSheet
+        open={createSheetOpen}
+        initialName={createSheetName}
+        onCancel={() => setCreateSheetOpen(false)}
+        onCreated={handleCreated}
+      />
     </div>
   );
 }
