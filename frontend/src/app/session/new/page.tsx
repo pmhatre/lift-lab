@@ -20,13 +20,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
@@ -160,7 +153,7 @@ export default function NewSessionPage() {
     try {
       const payload = {
         date: sessionDate,
-        day_type: dayType && dayType !== "_none" ? dayType : undefined,
+        day_type: dayType.trim() || undefined,
         exercises: exercises.map((ex) => ({
           exercise_id: ex.exercise.id,
           sets: ex.sets.map((s) => ({
@@ -208,24 +201,33 @@ export default function NewSessionPage() {
               className="w-[170px]"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Day Type</Label>
-            <Select value={dayType} onValueChange={(v) => setDayType(v ?? "")}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="No type">
-                  {(value: string) =>
-                    DAY_TYPE_OPTIONS.find((d) => (d.value || "_none") === value)?.label ?? "No type"
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {DAY_TYPE_OPTIONS.map((dt) => (
-                  <SelectItem key={dt.value || "_none"} value={dt.value || "_none"}>
-                    {dt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex-1 space-y-1.5 min-w-[200px]">
+            <Label htmlFor="day-type" className="text-xs">Day Type</Label>
+            <Input
+              id="day-type"
+              type="text"
+              value={dayType}
+              onChange={(e) => setDayType(e.target.value)}
+              placeholder="e.g. Chest & Back, or anything"
+              className="w-full"
+            />
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {DAY_TYPE_OPTIONS.filter((d) => d.value).map((dt) => (
+                <button
+                  key={dt.value}
+                  type="button"
+                  onClick={() => setDayType(dt.label)}
+                  className={cn(
+                    "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                    dayType === dt.label
+                      ? "border-primary/50 bg-primary/15 text-primary"
+                      : "border-border bg-secondary/40 text-muted-foreground hover:bg-secondary"
+                  )}
+                >
+                  {dt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -253,7 +255,19 @@ export default function NewSessionPage() {
               type="text"
               placeholder="Search exercises to add..."
               value={search}
-              onFocus={() => setShowRecent(true)}
+              onFocus={() => {
+                setShowRecent(true);
+                // Mobile: scroll the input near the top of the viewport so the
+                // dropdown (which opens below) has room to show all results +
+                // the "Create new exercise" option without being cut off by
+                // the screen bottom or the on-screen keyboard.
+                setTimeout(() => {
+                  searchRef.current?.scrollIntoView({
+                    block: "start",
+                    behavior: "smooth",
+                  });
+                }, 100);
+              }}
               onChange={(e) => {
                 setSearch(e.target.value);
                 setShowRecent(true);

@@ -36,3 +36,4 @@ _inbox/
 
 # Personal training context — local mirror of Claude.ai brainstorm, not for commit
 personal/
+.vercel

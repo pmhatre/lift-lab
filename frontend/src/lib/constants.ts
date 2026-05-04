@@ -14,5 +14,8 @@ export const DAY_TYPE_OPTIONS = [
 ];
 
 export function dayTypeLabel(t: string | null | undefined, fallback = "Training Session") {
-  return t ? DAY_TYPE_LABELS[t] ?? fallback : fallback;
+  if (!t) return fallback;
+  // Map legacy enum values (chest_back, etc.) to their pretty label.
+  // Free-text values (e.g. "Chest & Back" or any custom string) pass through.
+  return DAY_TYPE_LABELS[t] ?? t;
 }
