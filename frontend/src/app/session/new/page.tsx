@@ -12,7 +12,7 @@ import {
   Plus,
   Target,
   Lightbulb,
-  ArrowLeft,
+  Trash2,
 } from "lucide-react";
 
 import { api, Exercise, BtlData, RecentExercise } from "@/lib/api";
@@ -193,9 +193,14 @@ export default function NewSessionPage() {
         title="Log Session"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={discardSession}>
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">Discard</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={discardSession}
+              className="text-muted-foreground hover:text-destructive hover:border-destructive/40"
+            >
+              <Trash2 className="h-4 w-4" />
+              Discard
             </Button>
             <Button
               onClick={saveAndFinish}
