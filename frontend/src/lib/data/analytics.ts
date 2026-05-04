@@ -449,9 +449,15 @@ export interface DashboardResult {
   }>;
 }
 
+// Single-user app — hard-coded to the maintainer's timezone. If this ever
+// goes multi-user, plumb a per-user timezone through the request context.
+const USER_TZ = process.env.USER_TIMEZONE ?? "America/Los_Angeles";
+
 export async function dashboard(): Promise<DashboardResult> {
   const db = getDb();
-  const today = new Date().toISOString().slice(0, 10);
+  // Vercel Functions run in UTC. Compute "today" in the user's TZ so the
+  // dashboard's today-session lookup matches what the user logged.
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: USER_TZ });
   const monthAgo = new Date(Date.now() - 30 * 86400 * 1000)
     .toISOString()
     .slice(0, 10);

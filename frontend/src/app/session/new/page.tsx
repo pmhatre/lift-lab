@@ -40,7 +40,12 @@ interface LocalExercise {
 
 export default function NewSessionPage() {
   const router = useRouter();
-  const [sessionDate, setSessionDate] = useState(new Date().toISOString().slice(0, 10));
+  // sv-SE locale formats as YYYY-MM-DD; default timeZone is the browser's
+  // local TZ. Avoids the UTC bug where evenings-in-the-Americas already roll
+  // to "tomorrow" via toISOString.
+  const [sessionDate, setSessionDate] = useState(() =>
+    new Date().toLocaleDateString("sv-SE")
+  );
   const [dayType, setDayType] = useState("");
   const [exercises, setExercises] = useState<LocalExercise[]>([]);
   const [search, setSearch] = useState("");
