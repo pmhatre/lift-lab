@@ -12,6 +12,7 @@ import {
   Plus,
   Target,
   Lightbulb,
+  ArrowLeft,
 } from "lucide-react";
 
 import { api, Exercise, BtlData, RecentExercise } from "@/lib/api";
@@ -173,6 +174,17 @@ export default function NewSessionPage() {
     }
   };
 
+  const discardSession = () => {
+    // Session is local-state-only until Finish — discarding is just navigating
+    // away. Confirm only if the user has actually started logging something.
+    const dirty =
+      exercises.length > 0 || dayType.trim().length > 0;
+    if (dirty && !window.confirm("Discard this session? Your unsaved exercises and sets will be lost.")) {
+      return;
+    }
+    router.push("/");
+  };
+
   const hasContent = exercises.length > 0;
 
   return (
@@ -180,13 +192,19 @@ export default function NewSessionPage() {
       <PageHeader
         title="Log Session"
         actions={
-          <Button
-            onClick={saveAndFinish}
-            disabled={saving || !hasContent}
-            className="hidden bg-[color:var(--color-success)] hover:bg-[color:var(--color-success)]/85 sm:inline-flex"
-          >
-            {saving ? "Saving..." : "Finish Session"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={discardSession}>
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Discard</span>
+            </Button>
+            <Button
+              onClick={saveAndFinish}
+              disabled={saving || !hasContent}
+              className="hidden bg-[color:var(--color-success)] hover:bg-[color:var(--color-success)]/85 sm:inline-flex"
+            >
+              {saving ? "Saving..." : "Finish Session"}
+            </Button>
+          </div>
         }
       />
 
@@ -338,9 +356,13 @@ export default function NewSessionPage() {
         ))}
       </div>
 
-      {/* Mobile sticky finish bar */}
+      {/* Mobile sticky finish bar — hide while the search dropdown is open so
+          its bottom rows + the Create option aren't covered. */}
       <div
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:hidden"
+        className={cn(
+          "fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:hidden",
+          search.trim().length > 0 && "hidden"
+        )}
         style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
       >
         <Button
