@@ -232,20 +232,6 @@ export default function NewSessionPage() {
         </CardContent>
       </Card>
 
-      <div className="space-y-3">
-        {exercises.map((ex, exIdx) => (
-          <ExerciseCard
-            key={exIdx}
-            ex={ex}
-            exIdx={exIdx}
-            onAddSet={() => addSet(exIdx)}
-            onUpdateSet={updateSet}
-            onRemoveSet={removeSet}
-            onRemoveExercise={() => removeExercise(exIdx)}
-          />
-        ))}
-      </div>
-
       <Card>
         <CardContent className="p-4">
           <div className="relative">
@@ -257,10 +243,10 @@ export default function NewSessionPage() {
               value={search}
               onFocus={() => {
                 setShowRecent(true);
-                // Mobile: scroll the input near the top of the viewport so the
-                // dropdown (which opens below) has room to show all results +
-                // the "Create new exercise" option without being cut off by
-                // the screen bottom or the on-screen keyboard.
+                // Scroll the search Card to the top of the viewport so the
+                // dropdown that opens below has the full screen height to
+                // render. The Card sits ABOVE the exercise list so the
+                // dropdown overlays mostly-empty space.
                 setTimeout(() => {
                   searchRef.current?.scrollIntoView({
                     block: "start",
@@ -276,7 +262,7 @@ export default function NewSessionPage() {
             />
 
             {showRecent && search.trim().length === 0 && recentExercises.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-[60vh] overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
                 <div className="border-b border-border px-3 py-1.5 text-xs font-medium text-muted-foreground">
                   Recent
                 </div>
@@ -300,7 +286,7 @@ export default function NewSessionPage() {
             )}
 
             {(visibleSearchResults.length > 0 || showCreateOption) && (
-              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-[60vh] overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
                 {visibleSearchResults.map((ex) => (
                   <button
                     key={ex.id}
@@ -337,6 +323,20 @@ export default function NewSessionPage() {
           </div>
         </CardContent>
       </Card>
+
+      <div className="space-y-3">
+        {exercises.map((ex, exIdx) => (
+          <ExerciseCard
+            key={exIdx}
+            ex={ex}
+            exIdx={exIdx}
+            onAddSet={() => addSet(exIdx)}
+            onUpdateSet={updateSet}
+            onRemoveSet={removeSet}
+            onRemoveExercise={() => removeExercise(exIdx)}
+          />
+        ))}
+      </div>
 
       {/* Mobile sticky finish bar */}
       <div
