@@ -68,7 +68,13 @@ export default function NewSessionPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const visibleSearchResults = search.trim() ? searchResults : [];
+  const trimmedSearch = search.trim();
+  const visibleSearchResults = trimmedSearch ? searchResults : [];
+  const showCreateOption = trimmedSearch.length >= 2;
+  const exactMatch = visibleSearchResults.some(
+    (e) => e.name.toLowerCase() === trimmedSearch.toLowerCase()
+  );
+  const [creating, setCreating] = useState(false);
 
   const addExercise = useCallback(async (exercise: Exercise) => {
     const btl = await api.beatTheLogbook(exercise.id);
@@ -85,6 +91,19 @@ export default function NewSessionPage() {
     setSearchResults([]);
     setShowRecent(false);
   }, []);
+
+  const createAndAddExercise = useCallback(
+    async (name: string) => {
+      setCreating(true);
+      try {
+        const created = await api.createExercise({ name });
+        await addExercise(created);
+      } finally {
+        setCreating(false);
+      }
+    },
+    [addExercise]
+  );
 
   const addSet = (exIdx: number) => {
     setExercises((prev) => {
@@ -193,7 +212,11 @@ export default function NewSessionPage() {
             <Label className="text-xs">Day Type</Label>
             <Select value={dayType} onValueChange={(v) => setDayType(v ?? "")}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="No type" />
+                <SelectValue placeholder="No type">
+                  {(value: string) =>
+                    DAY_TYPE_OPTIONS.find((d) => (d.value || "_none") === value)?.label ?? "No type"
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {DAY_TYPE_OPTIONS.map((dt) => (
@@ -262,7 +285,7 @@ export default function NewSessionPage() {
               </div>
             )}
 
-            {visibleSearchResults.length > 0 && (
+            {(visibleSearchResults.length > 0 || showCreateOption) && (
               <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
                 {visibleSearchResults.map((ex) => (
                   <button
@@ -278,6 +301,23 @@ export default function NewSessionPage() {
                     )}
                   </button>
                 ))}
+                {showCreateOption && !exactMatch && (
+                  <button
+                    onClick={() => createAndAddExercise(trimmedSearch)}
+                    disabled={creating}
+                    className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-primary transition-colors hover:bg-secondary disabled:opacity-50"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>
+                      {creating ? "Creating…" : "Create new exercise: "}
+                      {!creating && (
+                        <span className="font-medium text-foreground">
+                          &ldquo;{trimmedSearch}&rdquo;
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                )}
               </div>
             )}
           </div>
