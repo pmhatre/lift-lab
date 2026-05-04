@@ -5,7 +5,7 @@
  * Translated from Python loops in backend/main.py into Postgres aggregations.
  * Fixes the N+1 patterns called out in the original audit.
  */
-import { and, asc, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
@@ -494,9 +494,7 @@ export async function dashboard(): Promise<DashboardResult> {
           count: sql<number>`cast(count(${sessionExercises.id}) as int)`,
         })
         .from(sessionExercises)
-        .where(
-          sql`${sessionExercises.sessionId} = ANY(${recentIds})`
-        )
+        .where(inArray(sessionExercises.sessionId, recentIds))
         .groupBy(sessionExercises.sessionId)
     : [];
   const countMap = new Map(exerciseCounts.map((c) => [c.sessionId, c.count]));
